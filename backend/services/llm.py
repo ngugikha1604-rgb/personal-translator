@@ -1,9 +1,17 @@
+import json
 from groq import Groq
-from config import GROQ_API_KEY, LLM_MODEL, USER_PROFILE
+from config import GROQ_API_KEY, LLM_MODEL, USER_PROFILE_PATH
+from services.context import context_manager
 
 client = Groq(api_key=GROQ_API_KEY)
 
-SYSTEM_PROMPT = """You are a conversation copilot. Your job is to help the user respond faster in real-time English conversations.
+
+def _load_profile() -> dict:
+    with open(USER_PROFILE_PATH, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+PROMPT_TEMPLATE = """You are a conversation copilot. Your job is to help the user respond faster in real-time English conversations.
 
 User profile:
 - Interests: {interests}
@@ -16,16 +24,89 @@ Analyze the last message from "Other" and return ONLY a valid JSON object:
   "reply": "<short phrase with the key point(s) for the user to say — NOT a full sentence, the user will speak in their own words>"
 }}
 
+Optionally, if you are confident about the type of conversation happening, include:
+  "detected_context": "<short label like 'job interview' or 'casual chat' or 'technical discussion'>",
+  "confidence": "<'high' | 'medium' | 'low'>"
+
+Only include these two fields together when you have enough signal. Omit both if unsure.
+
 Rules:
 - Return ONLY raw JSON. No markdown, no code fences, no extra text.
 - The reply MUST be truthful. Never invent facts about the user.
 - reply must be a short phrase, not a full sentence. The user adapts it when speaking.
 - intent must be max 6 words.
 - summary is internal reasoning context — keep it one sentence.
-""".format(
-    interests=", ".join(USER_PROFILE["interests"]),
-    style=", ".join(USER_PROFILE["communication_style"])
-)
+
+---
+
+Examples (follow this format exactly):
+
+Conversation:
+Other: What are you studying?
+
+Output:
+{{"intent": "asking about field of study", "summary": "The other person wants to know what the user is currently studying.", "reply": "AI and software engineering"}}
+
+---
+
+Conversation:
+Other: How long have you been doing competitive programming?
+You: About two years now.
+Other: Have you done ICPC?
+
+Output:
+{{"intent": "asking about ICPC experience", "summary": "They are probing the user's competitive programming background, specifically ICPC participation.", "reply": "not yet, aiming for it"}}
+
+---
+
+Conversation:
+Other: What do you think about large language models? Are they actually useful?
+
+Output:
+{{"intent": "asking opinion on LLMs", "summary": "The other person wants the user's personal take on whether LLMs have real practical value.", "reply": "yes, especially for code and reasoning tasks"}}
+
+---
+
+Conversation:
+Other: Nice to meet you. So what do you do?
+You: I'm into AI and software.
+Other: Oh interesting, what kind of AI projects?
+
+Output:
+{{"intent": "asking for specific AI work", "summary": "They followed up on the user's AI interest and want concrete examples of projects.", "reply": "mostly LLM applications and systems"}}
+
+---
+
+Conversation:
+Other: So tell me about yourself. What's your background?
+You: I studied computer science and work on AI stuff.
+Other: That's cool. We're looking for an ML engineer. Have you worked with transformers?
+You: Yeah I've built a few LLM applications.
+Other: What about production deployment? Ever put models into production?
+
+Output:
+{{"intent": "probing production ML experience", "summary": "They seem to be evaluating the user for an ML engineer role, specifically production experience.", "reply": "yes, deployed several models with Docker and monitoring", "detected_context": "job interview", "confidence": "high"}}
+"""
+
+
+def _build_system_prompt() -> str:
+    profile = _load_profile()
+    base = PROMPT_TEMPLATE.format(
+        interests=", ".join(profile.get("interests", [])),
+        style=", ".join(profile.get("communication_style", []))
+    )
+    context_block = context_manager.get_prompt_block()
+    if context_block:
+        # Inject after user profile block, before the output schema
+        insert_after = "- Communication style: {style}".format(
+            style=", ".join(profile.get("communication_style", []))
+        )
+        base = base.replace(
+            insert_after,
+            insert_after + "\n\n" + context_block,
+            1
+        )
+    return base
 
 
 def _build_conversation_text(turns: list) -> str:
@@ -46,7 +127,7 @@ def stream_analysis(turns: list):
     stream = client.chat.completions.create(
         model=LLM_MODEL,
         messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": _build_system_prompt()},
             {"role": "user", "content": f"Conversation so far:\n{conversation_text}\n\nAnalyze the last message from 'Other'."}
         ],
         stream=True,
