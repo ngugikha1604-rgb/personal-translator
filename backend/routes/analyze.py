@@ -1,10 +1,10 @@
 import json
 import time
 from flask import Blueprint, Response, request, stream_with_context
-from services.llm import stream_analysis
-from services.conversation import conversation
+
 from services.context import context_manager
-from services.stt import transcribe_audio
+from services.conversation import conversation
+from services.copilot import copilot_service
 
 analyze_bp = Blueprint("analyze", __name__)
 
@@ -22,7 +22,7 @@ def analyze():
         full_text = ""
         first_token = True
         try:
-            for token in stream_analysis(turns):
+            for token in copilot_service.stream_turns(turns):
                 if first_token:
                     ttft_ms = (time.perf_counter() - t0) * 1000
                     print(f"[LAT] LLM first token: {ttft_ms:.0f}ms")
@@ -32,18 +32,6 @@ def analyze():
 
             total_ms = (time.perf_counter() - t0) * 1000
             print(f"[LAT] LLM total: {total_ms:.0f}ms")
-
-            # Parse detected_context from LLM output
-            try:
-                parsed = json.loads(full_text)
-                ctx = parsed.get("detected_context")
-                conf = parsed.get("confidence")
-                if ctx and conf:
-                    context_manager.update_detected(ctx, conf)
-                    print(f"[CTX] Auto-detected: \"{ctx}\" (confidence={conf})")
-            except (json.JSONDecodeError, KeyError):
-                pass
-
             yield f"data: {json.dumps({'done': True, 'full': full_text, 'total_ms': round(total_ms)})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
@@ -53,8 +41,8 @@ def analyze():
         mimetype="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no"
-        }
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
@@ -66,13 +54,10 @@ def analyze_message():
         return json.dumps({"error": "Message is required"}), 400, {"Content-Type": "application/json"}
 
     try:
-        full_text = "".join(stream_analysis([{"speaker": "other", "text": message}]))
-        parsed = json.loads(full_text)
-        return json.dumps({
-            "intent": parsed.get("intent", ""),
-            "summary": parsed.get("summary", ""),
-            "reply": parsed.get("reply", ""),
-        }), 200, {"Content-Type": "application/json"}
+        result = copilot_service.analyze_other_text(message)
+        return json.dumps(result.display_payload()), 200, {"Content-Type": "application/json"}
+    except json.JSONDecodeError:
+        return json.dumps({"error": "LLM returned invalid JSON"}), 500, {"Content-Type": "application/json"}
     except Exception:
         return json.dumps({"error": "Something went wrong"}), 500, {"Content-Type": "application/json"}
 
@@ -83,7 +68,7 @@ def log_user():
     data = request.get_json(silent=True) or {}
     text = data.get("text", "").strip()
     if text:
-        conversation.add("user", text)
+        conversation.add_user(text)
     return json.dumps({"status": "ok"}), 200, {"Content-Type": "application/json"}
 
 
@@ -106,6 +91,7 @@ def clear():
     context_manager.reset()
     return json.dumps({"status": "cleared"}), 200, {"Content-Type": "application/json"}
 
+
 @analyze_bp.route("/analyze_audio", methods=["POST"])
 def analyze_audio():
     if "audio" not in request.files:
@@ -118,45 +104,11 @@ def analyze_audio():
         return json.dumps({"error": "Empty audio"}), 400, {"Content-Type": "application/json"}
 
     try:
-        # STT
-        t0 = time.perf_counter()
-        transcript = transcribe_audio(audio_bytes, filename=audio_file.filename or "audio.webm")
-        stt_ms = (time.perf_counter() - t0) * 1000
-        print(f"[LAT] STT: {stt_ms:.0f}ms | transcript: \"{transcript}\"")
-
-        if not transcript.strip():
-            return json.dumps({"transcript": "", "intent": "", "summary": "", "reply": ""}), 200, {"Content-Type": "application/json"}
-
-        # Add to buffer so LLM sees full conversation history
-        conversation.add("other", transcript)
-        turns = conversation.get_all()
-
-        # LLM
-        t1 = time.perf_counter()
-        full_text = "".join(stream_analysis(turns))
-        llm_ms = (time.perf_counter() - t1) * 1000
-        total_ms = (time.perf_counter() - t0) * 1000
-        print(f"[LAT] LLM: {llm_ms:.0f}ms | total: {total_ms:.0f}ms")
-
-        parsed = json.loads(full_text)
-
-        # Auto-detection: persist if confidence is high/medium
-        ctx = parsed.get("detected_context")
-        conf = parsed.get("confidence")
-        if ctx and conf:
-            context_manager.update_detected(ctx, conf)
-            print(f"[CTX] Auto-detected: \"{ctx}\" (confidence={conf})")
-
-        return json.dumps({
-            "transcript": transcript,
-            "intent":     parsed.get("intent", ""),
-            "summary":    parsed.get("summary", ""),
-            "reply":      parsed.get("reply", ""),
-            "stt_ms":     round(stt_ms),
-            "llm_ms":     round(llm_ms),
-            "total_ms":   round(total_ms),
-        }), 200, {"Content-Type": "application/json"}
-
+        payload = copilot_service.analyze_other_audio(
+            audio_bytes,
+            filename=audio_file.filename or "audio.webm",
+        )
+        return json.dumps(payload), 200, {"Content-Type": "application/json"}
     except json.JSONDecodeError:
         return json.dumps({"error": "LLM returned invalid JSON"}), 500, {"Content-Type": "application/json"}
     except Exception as e:

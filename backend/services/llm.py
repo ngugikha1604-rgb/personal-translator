@@ -1,5 +1,7 @@
 import json
+
 from groq import Groq
+
 from config import GROQ_API_KEY, LLM_MODEL, USER_PROFILE_PATH
 from services.context import context_manager
 
@@ -19,27 +21,22 @@ User profile:
 
 Analyze the last message from "Other" and return ONLY a valid JSON object:
 {{
-  "intent": "<what the speaker wants — short phrase, max 6 words, in English>",
-  "summary": "<one sentence explaining what is happening in this conversation, in English — used for reasoning only, never displayed>",
-  "reply": "<short phrase with the key point(s) for the user to say — NOT a full sentence, the user will speak in their own words>"
+  "intent": "<what the speaker wants - short phrase, max 6 words, in English>",
+  "summary": "<one sentence explaining what is happening in this conversation, in English - used for reasoning only, never displayed>",
+  "reply": "<short phrase with the key point(s) for the user to say - NOT a full sentence, the user will speak in their own words>"
 }}
-
-Optionally, if you are confident about the type of conversation happening, include:
-  "detected_context": "<short label like 'job interview' or 'casual chat' or 'technical discussion'>",
-  "confidence": "<'high' | 'medium' | 'low'>"
-
-Only include these two fields together when you have enough signal. Omit both if unsure.
 
 Rules:
 - Return ONLY raw JSON. No markdown, no code fences, no extra text.
 - The reply MUST be truthful. Never invent facts about the user.
 - reply must be a short phrase, not a full sentence. The user adapts it when speaking.
 - intent must be max 6 words.
-- summary is internal reasoning context — keep it one sentence.
+- summary is internal reasoning context - keep it one sentence.
+- Do not add fields. The only allowed keys are intent, summary, and reply.
 
 ---
 
-Examples (follow this format exactly):
+Examples:
 
 Conversation:
 Other: What are you studying?
@@ -85,54 +82,46 @@ You: Yeah I've built a few LLM applications.
 Other: What about production deployment? Ever put models into production?
 
 Output:
-{{"intent": "probing production ML experience", "summary": "They seem to be evaluating the user for an ML engineer role, specifically production experience.", "reply": "yes, deployed several models with Docker and monitoring", "detected_context": "job interview", "confidence": "high"}}
+{{"intent": "probing production ML experience", "summary": "They seem to be evaluating the user for an ML engineer role, specifically production experience.", "reply": "LLM applications, happy to explain scope"}}
 """
 
 
 def _build_system_prompt() -> str:
     profile = _load_profile()
-    base = PROMPT_TEMPLATE.format(
-        interests=", ".join(profile.get("interests", [])),
-        style=", ".join(profile.get("communication_style", []))
-    )
+    interests = ", ".join(profile.get("interests", []))
+    style = ", ".join(profile.get("communication_style", []))
+    base = PROMPT_TEMPLATE.format(interests=interests, style=style)
     context_block = context_manager.get_prompt_block()
     if context_block:
-        # Inject after user profile block, before the output schema
-        insert_after = "- Communication style: {style}".format(
-            style=", ".join(profile.get("communication_style", []))
-        )
-        base = base.replace(
-            insert_after,
-            insert_after + "\n\n" + context_block,
-            1
-        )
+        insert_after = f"- Communication style: {style}"
+        base = base.replace(insert_after, insert_after + "\n\n" + context_block, 1)
     return base
 
 
 def _build_conversation_text(turns: list) -> str:
     lines = []
     for turn in turns:
-        if turn["speaker"] == "other":
-            speaker = "Other"
-        else:
-            speaker = "You"
+        speaker = "Other" if turn["speaker"] == "other" else "You"
         lines.append(f"{speaker}: {turn['text']}")
     return "\n".join(lines)
 
 
 def stream_analysis(turns: list):
-    """Yields text tokens from LLM streaming response."""
+    """Yield raw text tokens from the LLM streaming response."""
     conversation_text = _build_conversation_text(turns)
 
     stream = client.chat.completions.create(
         model=LLM_MODEL,
         messages=[
             {"role": "system", "content": _build_system_prompt()},
-            {"role": "user", "content": f"Conversation so far:\n{conversation_text}\n\nAnalyze the last message from 'Other'."}
+            {
+                "role": "user",
+                "content": f"Conversation so far:\n{conversation_text}\n\nAnalyze the last message from 'Other'.",
+            },
         ],
         stream=True,
         max_tokens=300,
-        temperature=0.3
+        temperature=0.3,
     )
 
     for chunk in stream:

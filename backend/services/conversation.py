@@ -9,6 +9,12 @@ class ConversationBuffer:
     def add(self, speaker: str, text: str):
         self.buffer.append({"speaker": speaker, "text": text})
 
+    def add_other(self, text: str):
+        self.add("other", text)
+
+    def add_user(self, text: str):
+        self.add("user", text)
+
     def get_all(self) -> list:
         return list(self.buffer)
 
@@ -16,5 +22,6 @@ class ConversationBuffer:
         self.buffer.clear()
 
 
-# Singleton dùng chung toàn app
+# Shared singleton for the whole app
 conversation = ConversationBuffer()
+
