@@ -1,0 +1,197 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Conversation Copilot</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#080C14;--bg-card:rgba(255,255,255,0.04);--border:rgba(255,255,255,0.08);
+      --border-glow:rgba(99,179,255,0.35);--text-primary:#E8EDF5;--text-dim:#5A6680;
+      --text-label:#4A5570;--accent-blue:#3B82F6;--accent-green:#22C55E;
+      --accent-amber:#F59E0B;--accent-reply:#60A5FA;--reply-bg:rgba(59,130,246,0.08);
+      --reply-border:rgba(59,130,246,0.25);--responded-bg:rgba(34,197,94,0.08);
+      --responded-border:rgba(34,197,94,0.25)
+    }
+    html,body{height:100%;background:var(--bg);color:var(--text-primary);font-family:Inter,sans-serif;font-size:15px;line-height:1.6}
+    body{display:flex;flex-direction:column;align-items:center;padding:32px 20px 48px;min-height:100vh}
+    body::before{content:"";position:fixed;top:-200px;left:50%;transform:translateX(-50%);width:700px;height:500px;background:radial-gradient(ellipse,rgba(59,130,246,0.07) 0%,transparent 70%);pointer-events:none;z-index:0}
+    .app{position:relative;z-index:1;width:100%;max-width:520px;display:flex;flex-direction:column;gap:16px}
+    .header{display:flex;align-items:center;justify-content:space-between;padding-bottom:8px}
+    .header-left{display:flex;align-items:center;gap:10px}
+    .logo-dot{width:8px;height:8px;border-radius:50%;background:var(--accent-blue);box-shadow:0 0 10px var(--accent-blue);transition:background .4s,box-shadow .4s}
+    .logo-dot.listening{background:var(--accent-green);box-shadow:0 0 12px var(--accent-green);animation:pulse-dot 1.4s ease-in-out infinite}
+    .logo-dot.processing{background:var(--accent-amber);box-shadow:0 0 12px var(--accent-amber)}
+    @keyframes pulse-dot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(1.4)}}
+    .app-title{font-size:.85rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim)}
+    .status-bar{display:flex;align-items:center;gap:12px}
+    .status-text{font-size:.78rem;color:var(--text-label);font-weight:500;letter-spacing:.04em;transition:color .3s;min-width:90px}
+    .status-text.listening{color:var(--accent-green)}.status-text.processing{color:var(--accent-amber)}.status-text.ready{color:var(--accent-blue)}
+    .waveform{display:flex;align-items:center;gap:3px;height:24px}
+    .wave-bar{width:3px;border-radius:2px;background:var(--text-label);height:4px;transition:background .3s}
+    .waveform.listening .wave-bar{background:var(--accent-green);animation:wave .8s ease-in-out infinite}
+    .waveform.processing .wave-bar{background:var(--accent-amber);animation:wave .5s ease-in-out infinite}
+    .wave-bar:nth-child(1){animation-delay:0s}.wave-bar:nth-child(2){animation-delay:.1s}.wave-bar:nth-child(3){animation-delay:.2s}.wave-bar:nth-child(4){animation-delay:.15s}.wave-bar:nth-child(5){animation-delay:.05s}.wave-bar:nth-child(6){animation-delay:.25s}.wave-bar:nth-child(7){animation-delay:.1s}.wave-bar:nth-child(8){animation-delay:.3s}
+    @keyframes wave{0%,100%{height:4px}50%{height:18px}}
+    .card{background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:18px 20px;backdrop-filter:blur(12px);transition:border-color .4s,background .4s}
+    .card.active{border-color:var(--border-glow);background:rgba(255,255,255,0.055)}
+    .card-label{font-size:.68rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text-label);margin-bottom:8px;display:flex;align-items:center;gap:6px}
+    #intent-value{font-size:1rem;font-weight:500;color:var(--text-primary)}
+    #summary-value{font-size:.8rem;color:var(--text-dim);margin-top:5px}
+    #reply-card{background:var(--reply-bg);border-color:var(--reply-border)}
+    #reply-card.active{border-color:rgba(99,179,255,.5);background:rgba(59,130,246,.1)}
+    #reply-card .card-label{color:rgba(96,165,250,.7)}
+    #reply-value{font-size:1.15rem;font-weight:500;color:var(--accent-reply);line-height:1.5}
+    .placeholder{color:var(--text-label);font-size:.9rem;font-style:italic}
+    .action-row{display:flex;align-items:center;gap:10px;margin-top:4px}
+    .btn{display:inline-flex;align-items:center;gap:7px;padding:10px 18px;border-radius:10px;font-family:Inter,sans-serif;font-size:.82rem;font-weight:600;cursor:pointer;border:1px solid transparent;transition:background .2s,border-color .2s,transform .1s,opacity .2s}
+    .btn:active{transform:scale(.97)}
+    #responded-btn{background:var(--responded-bg);border-color:var(--responded-border);color:var(--accent-green);flex:1}
+    #responded-btn:hover{background:rgba(34,197,94,.14);border-color:rgba(34,197,94,.45)}
+    #responded-btn:disabled{opacity:.3;cursor:not-allowed}
+    .btn-ghost{background:transparent;border-color:var(--border);color:var(--text-label);padding:10px 14px}
+    .btn-ghost:hover{border-color:rgba(255,255,255,.18);color:var(--text-dim)}
+    .kbd{font-size:.68rem;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:4px;padding:1px 5px;font-family:monospace;color:var(--text-dim)}
+    .log-toggle{font-size:.72rem;color:var(--text-label);background:none;border:none;cursor:pointer;padding:0;font-family:Inter,sans-serif;transition:color .2s}
+    .log-toggle:hover{color:var(--text-dim)}
+    #log-panel{display:none;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:14px 16px;max-height:180px;overflow-y:auto}
+    #log-panel.open{display:block}
+    .log-entry{font-size:.78rem;margin-bottom:6px;display:flex;gap:8px}
+    .log-speaker{font-weight:600;min-width:40px;font-size:.72rem}
+    .log-speaker.other{color:var(--accent-amber)}.log-speaker.me{color:var(--accent-green)}
+    .log-text{color:var(--text-dim)}
+    ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+    .toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(20px);background:rgba(30,36,54,.95);border:1px solid var(--border);border-radius:8px;padding:8px 16px;font-size:.78rem;color:var(--text-dim);opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;white-space:nowrap;backdrop-filter:blur(8px)}
+    .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+    .listen-ring{width:36px;height:36px;border-radius:50%;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:.9rem;transition:border-color .3s;flex-shrink:0}
+    .listen-ring.listening{border-color:var(--accent-green);box-shadow:0 0 0 4px rgba(34,197,94,.1);animation:ring-pulse 2s ease-in-out infinite}
+    .listen-ring.processing{border-color:var(--accent-amber)}
+    @keyframes ring-pulse{0%,100%{box-shadow:0 0 0 4px rgba(34,197,94,.1)}50%{box-shadow:0 0 0 8px rgba(34,197,94,.04)}}
+    #start-overlay{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;z-index:100}
+    .start-title{font-size:1.3rem;font-weight:600;color:var(--text-primary);letter-spacing:-.02em}
+    .start-sub{font-size:.85rem;color:var(--text-dim);text-align:center;max-width:300px;line-height:1.7}
+    #start-btn{background:var(--accent-blue);border:none;color:#fff;font-size:.9rem;font-weight:600;padding:13px 32px;border-radius:12px;cursor:pointer;transition:opacity .2s,transform .1s;box-shadow:0 4px 20px rgba(59,130,246,.35);font-family:Inter,sans-serif}
+    #start-btn:hover{opacity:.9}#start-btn:active{transform:scale(.97)}
+    .fade-out{animation:fadeOut .4s forwards}
+    @keyframes fadeOut{to{opacity:0;pointer-events:none}}
+  </style>
+</head>
+<body>
+<div id="start-overlay">
+  <div style="font-size:2rem">&#127897;</div>
+  <div class="start-title">Conversation Copilot</div>
+  <div class="start-sub">Listens to the other person and suggests how to reply in real time.</div>
+  <button id="start-btn">Start Listening</button>
+</div>
+<div class="app">
+  <div class="header">
+    <div class="header-left">
+      <div class="logo-dot" id="logo-dot"></div>
+      <span class="app-title">Copilot</span>
+    </div>
+    <button class="log-toggle" id="log-toggle-btn">show transcript &#9662;</button>
+  </div>
+  <div class="status-bar">
+    <div class="listen-ring" id="listen-ring">&#127897;</div>
+    <div class="waveform" id="waveform">
+      <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+      <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+    </div>
+    <div class="status-text" id="status-text">Idle</div>
+  </div>
+  <div class="card" id="intent-card">
+    <div class="card-label">&#129504; Intent</div>
+    <div id="intent-value" class="placeholder">Waiting for speech&hellip;</div>
+    <div id="summary-value"></div>
+  </div>
+  <div class="card" id="reply-card">
+    <div class="card-label">&#128172; Suggested Reply</div>
+    <div id="reply-value" class="placeholder">&mdash;</div>
+  </div>
+  <div class="action-row">
+    <button class="btn" id="responded-btn" disabled>
+      &#10003; I responded <span class="kbd">Space</span>
+    </button>
+    <button class="btn btn-ghost" id="clear-btn">&#8635; Clear</button>
+  </div>
+  <div id="log-panel"></div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+  const BACKEND="http://localhost:5000";
+  const logoDot=document.getElementById("logo-dot"),listenRing=document.getElementById("listen-ring"),waveform=document.getElementById("waveform"),statusText=document.getElementById("status-text");
+  const intentEl=document.getElementById("intent-value"),summaryEl=document.getElementById("summary-value"),replyEl=document.getElementById("reply-value");
+  const respondedBtn=document.getElementById("responded-btn"),clearBtn=document.getElementById("clear-btn"),logPanel=document.getElementById("log-panel"),logToggleBtn=document.getElementById("log-toggle-btn");
+  const intentCard=document.getElementById("intent-card"),replyCard=document.getElementById("reply-card"),toast=document.getElementById("toast"),startOverlay=document.getElementById("start-overlay"),startBtn=document.getElementById("start-btn");
+  let audioCtx=null,analyser=null,mediaRecorder=null,audioChunks=[],stream=null,isSpeaking=false,silenceTimer=null,vadInterval=null,isProcessing=false,logOpen=false,speechStartTime=0;
+  const VAD_INTERVAL_MS=80,SILENCE_DELAY_MS=1200,SPEECH_THRESHOLD=0.018,MIN_SPEECH_MS=400;
+  function setUIState(s){
+    logoDot.className="logo-dot";listenRing.className="listen-ring";waveform.className="waveform";statusText.className="status-text";
+    if(s==="idle"){statusText.textContent="Idle";listenRing.textContent="🎙";}
+    else if(s==="listening"){logoDot.classList.add("listening");listenRing.classList.add("listening");waveform.classList.add("listening");statusText.classList.add("listening");statusText.textContent="Listening";listenRing.textContent="🎙";}
+    else if(s==="speaking"){logoDot.classList.add("listening");listenRing.classList.add("listening");waveform.classList.add("listening");statusText.classList.add("listening");statusText.textContent="Recording…";listenRing.textContent="🔴";}
+    else if(s==="processing"){logoDot.classList.add("processing");listenRing.classList.add("processing");waveform.classList.add("processing");statusText.classList.add("processing");statusText.textContent="Processing";listenRing.textContent="⏳";}
+    else if(s==="ready"){logoDot.classList.add("listening");listenRing.classList.add("listening");waveform.classList.add("listening");statusText.classList.add("ready");statusText.textContent="Listening";listenRing.textContent="🎙";}
+  }
+  function getRMS(d){let s=0;for(let i=0;i<d.length;i++){const v=(d[i]-128)/128;s+=v*v;}return Math.sqrt(s/d.length);}
+  function startVAD(){
+    const da=new Uint8Array(analyser.fftSize);
+    vadInterval=setInterval(()=>{
+      if(isProcessing)return;
+      analyser.getByteTimeDomainData(da);
+      const rms=getRMS(da);
+      if(rms>SPEECH_THRESHOLD){
+        if(!isSpeaking){isSpeaking=true;speechStartTime=Date.now();startCapture();}
+        clearTimeout(silenceTimer);
+        silenceTimer=setTimeout(()=>{if(isSpeaking){isSpeaking=false;stopCapture();}},SILENCE_DELAY_MS);
+      }
+    },VAD_INTERVAL_MS);
+  }
+  function startCapture(){audioChunks=[];mediaRecorder=new MediaRecorder(stream,{mimeType:"audio/webm"});mediaRecorder.ondataavailable=e=>{if(e.data.size>0)audioChunks.push(e.data);};mediaRecorder.onstop=handleAudioReady;mediaRecorder.start();setUIState("speaking");}
+  function stopCapture(){if(mediaRecorder&&mediaRecorder.state!=="inactive")mediaRecorder.stop();}
+  async function handleAudioReady(){
+    if(Date.now()-speechStartTime<MIN_SPEECH_MS||!audioChunks.length){setUIState("listening");return;}
+    isProcessing=true;setUIState("processing");
+    const blob=new Blob(audioChunks,{type:"audio/webm"});
+    try{const t=await sendAudio(blob);if(!t||!t.trim()){setUIState("ready");isProcessing=false;return;}addLog("other",t);await streamAnalysis();}
+    catch(e){showToast("Error: "+e.message);setUIState("ready");}
+    finally{isProcessing=false;}
+  }
+  async function sendAudio(blob){const fd=new FormData();fd.append("audio",blob,"audio.webm");const r=await fetch(BACKEND+"/transcribe",{method:"POST",body:fd});const d=await r.json();if(d.error)throw new Error(d.error);return d.transcript;}
+  async function streamAnalysis(){
+    intentEl.textContent="…";intentEl.classList.remove("placeholder");summaryEl.textContent="";replyEl.textContent="…";replyEl.classList.remove("placeholder");
+    intentCard.classList.add("active");replyCard.classList.add("active");
+    return new Promise((resolve,reject)=>{
+      const es=new EventSource(BACKEND+"/analyze");let ft="";
+      es.onmessage=e=>{
+        const d=JSON.parse(e.data);
+        if(d.error){es.close();showToast("LLM error: "+d.error);reject(new Error(d.error));return;}
+        if(d.token)ft+=d.token;
+        if(d.done){es.close();try{const p=JSON.parse(ft);intentEl.textContent=p.intent||"—";summaryEl.textContent=p.summary||"";replyEl.textContent=p.reply||"—";}catch{replyEl.textContent=ft;}respondedBtn.disabled=false;setUIState("ready");resolve();}
+      };
+      es.onerror=()=>{es.close();reject(new Error("Stream error"));};
+    });
+  }
+  function handleResponded(){
+    if(respondedBtn.disabled)return;
+    const r=replyEl.textContent;
+    if(r&&r!=="—"&&r!=="…"){fetch(BACKEND+"/log_user",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:r})}).catch(()=>{});addLog("me",r);}
+    respondedBtn.disabled=true;showToast("Logged ✓");
+  }
+  function addLog(speaker,text){const e=document.createElement("div");e.className="log-entry";const s=document.createElement("span");s.className="log-speaker "+speaker;s.textContent=speaker==="other"?"Them":"You";const t=document.createElement("span");t.className="log-text";t.textContent=text;e.appendChild(s);e.appendChild(t);logPanel.appendChild(e);logPanel.scrollTop=logPanel.scrollHeight;}
+  logToggleBtn.addEventListener("click",()=>{logOpen=!logOpen;logPanel.classList.toggle("open",logOpen);logToggleBtn.textContent=logOpen?"hide transcript ▴":"show transcript ▾";});
+  clearBtn.addEventListener("click",async()=>{await fetch(BACKEND+"/clear",{method:"POST"});intentEl.textContent="Waiting for speech…";intentEl.classList.add("placeholder");summaryEl.textContent="";replyEl.textContent="—";replyEl.classList.add("placeholder");intentCard.classList.remove("active");replyCard.classList.remove("active");respondedBtn.disabled=true;logPanel.innerHTML="";showToast("Session cleared");});
+  document.addEventListener("keydown",e=>{if(e.code==="Space"&&!e.repeat){e.preventDefault();handleResponded();}});
+  respondedBtn.addEventListener("click",handleResponded);
+  let tt=null;
+  function showToast(msg){toast.textContent=msg;toast.classList.add("show");clearTimeout(tt);tt=setTimeout(()=>toast.classList.remove("show"),2200);}
+  startBtn.addEventListener("click",async()=>{
+    try{stream=await navigator.mediaDevices.getUserMedia({audio:true});audioCtx=new AudioContext();const src=audioCtx.createMediaStreamSource(stream);analyser=audioCtx.createAnalyser();analyser.fftSize=512;src.connect(analyser);startOverlay.classList.add("fade-out");setTimeout(()=>startOverlay.style.display="none",400);setUIState("listening");startVAD();}
+    catch(e){startBtn.textContent="Mic access denied";startBtn.style.background="#DC2626";}
+  });
+</script>
+</body>
+</html>
