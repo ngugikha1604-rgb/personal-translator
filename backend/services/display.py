@@ -10,12 +10,13 @@ Information hierarchy (same regardless of display medium):
     Hidden    → summary (LLM reasoning only, never shown)
 """
 
-RESET = "\033[0m"
-BOLD  = "\033[1m"
-DIM   = "\033[90m"
-GREEN = "\033[92m"
-RED   = "\033[91m"
-LINE  = "─" * 52
+RESET  = "\033[0m"
+BOLD   = "\033[1m"
+DIM    = "\033[90m"
+GREEN  = "\033[92m"
+YELLOW = "\033[93m"
+RED    = "\033[91m"
+LINE   = "─" * 52
 
 
 class Display:
@@ -30,6 +31,17 @@ class Display:
         print(f"  {BOLD}{GREEN}{reply}{RESET}")
         print(f"  {DIM}{intent}{RESET}")
         self._divider()
+
+    def verification(self, correct: bool, warning: str | None, llm_ms: int) -> None:
+        """
+        Show verification result for user's own speech.
+        Green check if okay, yellow warning if issue found.
+        """
+        if correct:
+            print(f"  {DIM}{GREEN}✓ understood  ({llm_ms}ms){RESET}")
+        else:
+            msg = warning or "inconsistent — double-check!"
+            print(f"  {YELLOW}⚠ {msg}  ({llm_ms}ms){RESET}")
 
     def status(self, message: str) -> None:
         print(f"  {DIM}{message}{RESET}")

@@ -5,12 +5,13 @@ Run:
     cd backend
     python main.py
 
-Controls: 
+Controls:
     SPACE (hold)  →  mute while you speak
     Q             →  quit
     Ctrl+C        →  quit
 """
 
+import signal
 import sys
 import threading
 import time
@@ -18,9 +19,10 @@ import time
 from config import GROQ_API_KEY
 from services.audio import record_chunk, CHUNK_SECONDS
 from services.conversation import conversation
-from services.copilot import copilot_service, CopilotResult
+from services.copilot import copilot_service
 from services.display import display
-from services.speech import speech_service, SpeechResult
+from services.speech import speech_service, SpeechResult, SpeechStatus
+from services.utterance_filter import classify_utterance
 
 DIM   = "\033[90m"
 RESET = "\033[0m"
@@ -39,7 +41,7 @@ def _validate() -> None:
 def _log_turn(
     turn_n: int,
     speech: SpeechResult,
-    result: CopilotResult,
+    result,
 ) -> None:
     """Structured per-turn metrics log."""
     total_ms = speech.stt_ms + result.llm_ms
@@ -102,13 +104,44 @@ def main() -> None:
 
     muted    = threading.Event()
     turn_n   = 0
+    user_audio_chunks = []
     _setup_keyboard(muted)
     display.status("listening...")
+
+    # Clean shutdown on SIGTERM (e.g. systemd stop, pkill)
+    def _handle_signal(signum, frame):
+        display.status(f"Session ended. {turn_n} turns.")
+        sys.exit(0)
+    signal.signal(signal.SIGTERM, _handle_signal)
 
     try:
         while True:
             if muted.is_set():
-                time.sleep(0.05)
+                # Keep chunking for speed, but defer STT/verification until SPACE release.
+                user_audio_chunks.append(record_chunk(CHUNK_SECONDS))
+                continue
+
+            if user_audio_chunks:
+                speech = speech_service.transcribe_user_audio(
+                    b"".join(user_audio_chunks),
+                    "user_utterance.wav",
+                )
+                user_audio_chunks.clear()
+
+                transcript = speech.transcript.strip()
+                if transcript:
+                    conversation.add_user(transcript)
+                    try:
+                        result = copilot_service.analyze_user_speech(conversation.get_all())
+                        display.verification(
+                            result.understanding_correct,
+                            result.warning,
+                            result.llm_ms,
+                        )
+                    except Exception as e:
+                        display.error(f"Verification failed: {e}")
+
+                display.status("listening...")
                 continue
 
             # Capture audio chunk from mic (Mic 1 — other person)
@@ -116,14 +149,29 @@ def main() -> None:
 
             # STT with VAD gate — skips silent chunks automatically
             speech = speech_service.transcribe_other_audio(audio_bytes, "chunk.wav")
-            if speech.skipped or not speech.transcript:
+            transcript = speech.transcript.strip()
+
+            # Handle status codes
+            if speech.status == SpeechStatus.ERROR:
+                display.error(f"STT failed for chunk")
+                continue
+            if speech.status == SpeechStatus.SKIPPED:
+                continue
+
+            # Utterance filter: classify before LLM call
+            classification = classify_utterance(transcript)
+            if classification == "noise":
+                continue
+            if classification == "backchannel":
+                conversation.add_other(transcript)
+                # No LLM call — just buffer it
                 continue
 
             display.status("processing...")
             turn_n += 1
 
             # Add transcript to conversation, run LLM analysis
-            conversation.add_other(speech.transcript)
+            conversation.add_other(transcript)
             try:
                 result = copilot_service.analyze_turns(conversation.get_all())
                 _log_turn(turn_n, speech, result)

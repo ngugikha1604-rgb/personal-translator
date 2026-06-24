@@ -1,129 +1,19 @@
-import json
-import time
-from dataclasses import dataclass
+"""
+llm.py — LLM provider abstraction.
 
-from groq import Groq
-
-from config import GROQ_API_KEY, LLM_MODEL, USER_PROFILE_PATH
-from services.context import context_manager
-
-client = Groq(api_key=GROQ_API_KEY)
-
-
-def _load_profile() -> dict:
-    with open(USER_PROFILE_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-PROMPT_TEMPLATE = """You are a conversation copilot. Your job is to help the user respond faster in real-time English conversations.
-
-User profile:
-- Interests: {interests}
-- Communication style: {style}
-{context_block}
-Analyze the last message from "Other" and return ONLY a valid JSON object:
-{{
-  "intent": "<what the speaker wants - short phrase, max 6 words, in English>",
-  "summary": "<one sentence explaining what is happening in this conversation, in English - used for reasoning only, never displayed>",
-  "reply": "<spoken response fragment — must sound like natural speech mid-sentence, with a verb or connector so the user can start speaking immediately. NOT a noun list. The user glances at this and speaks it out loud.>"
-}}
-
-Rules:
-- Return ONLY raw JSON. No markdown, no code fences, no extra text.
-- The reply MUST be truthful. Never invent facts about the user.
-- reply is a spoken fragment, not a noun list. Wrong: "AI and software engineering". Right: "studying AI, building LLM stuff". Always include a verb or natural connector.
-- reply should be 5–9 words — enough to carry a real thought, short enough to read in a glance.
-- intent must be max 6 words.
-- summary is internal reasoning context - keep it one sentence.
-- Do not add fields. The only allowed keys are intent, summary, and reply.
-
----
-
-Examples:
-
-Conversation:
-Other: What are you studying?
-
-Output:
-{{"intent": "asking about field of study", "summary": "The other person wants to know what the user is currently studying.", "reply": "studying AI, mostly building LLM stuff"}}
-
----
-
-Conversation:
-Other: Hey, nice to meet you! So what brings you here?
-
-Output:
-{{"intent": "opening small talk", "summary": "They are starting the conversation casually and want to know why the user is here.", "reply": "just here to meet people, see what's going on"}}
-
----
-
-Conversation:
-Other: Do you compete in any programming contests?
-
-Output:
-{{"intent": "asking about competitive programming", "summary": "They want to know if the user participates in competitive programming competitions.", "reply": "yeah, been doing it for about two years"}}
-
----
-
-Conversation:
-Other: How long have you been doing competitive programming?
-You: About two years now.
-Other: Have you done ICPC?
-
-Output:
-{{"intent": "asking about ICPC experience", "summary": "They are probing the user's competitive programming background, specifically ICPC participation.", "reply": "not yet, but planning to go for it"}}
-
----
-
-Conversation:
-Other: What do you think about large language models? Are they actually useful?
-
-Output:
-{{"intent": "asking opinion on LLMs", "summary": "The other person wants the user's personal take on whether LLMs have real practical value.", "reply": "yeah, really useful especially for coding and reasoning"}}
-
----
-
-Conversation:
-Other: Nice to meet you. So what do you do?
-You: I'm into AI and software.
-Other: Oh interesting, what kind of AI projects?
-
-Output:
-{{"intent": "asking for specific AI work", "summary": "They followed up on the user's AI interest and want concrete examples of projects.", "reply": "been building LLM apps, some systems stuff too"}}
-
----
-
-Conversation:
-Other: So tell me about yourself. What's your background?
-You: I studied computer science and work on AI stuff.
-Other: That's cool. We're looking for an ML engineer. Have you worked with transformers?
-You: Yeah I've built a few LLM applications.
-Other: What about production deployment? Ever put models into production?
-
-Output:
-{{"intent": "probing production ML experience", "summary": "They seem to be evaluating the user for an ML engineer role, specifically production experience.", "reply": "yeah, deployed a few with Docker and monitoring"}}
+Calls configured LLM (currently Groq) via shared client.
+Prompt templates live in prompts.py. Profile reads cached in groq_client.py.
+Single streaming implementation — no copy-paste between copilot and verification.
 """
 
+import time
+from dataclasses import dataclass
+from typing import Callable, Optional
 
-def _build_system_prompt() -> str:
-    profile = _load_profile()
-    interests = ", ".join(profile.get("interests", []))
-    style = ", ".join(profile.get("communication_style", []))
-    context_block = context_manager.get_prompt_block()
-    context_section = f"\n{context_block}\n" if context_block else "\n"
-    return PROMPT_TEMPLATE.format(
-        interests=interests,
-        style=style,
-        context_block=context_section,
-    )
-
-
-def _build_conversation_text(turns: list) -> str:
-    lines = []
-    for turn in turns:
-        speaker = "Other" if turn["speaker"] == "other" else "You"
-        lines.append(f"{speaker}: {turn['text']}")
-    return "\n".join(lines)
+from config import LLM_MODEL
+from services.groq_client import get_client, get_user_profile
+from services.context import context_manager
+from services.prompts import COPILOT_SYSTEM_PROMPT, VERIFICATION_SYSTEM_PROMPT
 
 
 # ─── Result ───────────────────────────────────────────────────────────────────
@@ -138,33 +28,48 @@ class LLMResult:
     total_tokens:       int
 
 
-# ─── Main call ────────────────────────────────────────────────────────────────
+# ─── Prompt assembly ──────────────────────────────────────────────────────────
 
-def call_llm(turns: list) -> LLMResult:
-    """
-    Call the LLM and return full text + latency + token metrics.
-    Uses streaming internally to capture TTFT accurately.
-    """
-    system_prompt     = _build_system_prompt()
-    conversation_text = _build_conversation_text(turns)
+def _build_system_prompt(template: str) -> str:
+    profile = get_user_profile()
+    interests = ", ".join(profile.get("interests", []))
+    style = ", ".join(profile.get("communication_style", []))
+    context_block = context_manager.get_prompt_block()
+    context_section = f"\n{context_block}\n" if context_block else "\n"
+    return template.format(
+        interests=interests,
+        style=style,
+        context_block=context_section,
+    )
 
-    t_start       = time.perf_counter()
-    t_first_token = None
-    chunks        = []
-    usage         = None
+
+def _build_conversation_text(turns: list) -> str:
+    lines = []
+    for turn in turns:
+        speaker = "Other" if turn["speaker"] == "other" else "You"
+        lines.append(f"{speaker}: {turn['text']}")
+    return "\n".join(lines)
+
+
+# ─── Streaming call ───────────────────────────────────────────────────────────
+
+def _run_stream(system_prompt: str, user_content: str, on_token: Callable[[str], None] = None) -> LLMResult:
+    """
+    Call Groq streaming API, accumulate text + metrics.
+    """
+    client = get_client()
+    t_start = time.perf_counter()
+    t_first_token: Optional[float] = None
+    chunks: list[str] = []
+    # ponytail: usage tracking depends on stream_options support in Groq SDK
+    usage = None
 
     try:
         stream = client.chat.completions.create(
             model=LLM_MODEL,
             messages=[
                 {"role": "system", "content": system_prompt},
-                {
-                    "role": "user",
-                    "content": (
-                        f"Conversation so far:\n{conversation_text}\n\n"
-                        "Analyze the last message from 'Other'."
-                    ),
-                },
+                {"role": "user", "content": user_content},
             ],
             stream=True,
             max_tokens=300,
@@ -177,13 +82,7 @@ def call_llm(turns: list) -> LLMResult:
             model=LLM_MODEL,
             messages=[
                 {"role": "system", "content": system_prompt},
-                {
-                    "role": "user",
-                    "content": (
-                        f"Conversation so far:\n{conversation_text}\n\n"
-                        "Analyze the last message from 'Other'."
-                    ),
-                },
+                {"role": "user", "content": user_content},
             ],
             stream=True,
             max_tokens=300,
@@ -204,6 +103,8 @@ def call_llm(turns: list) -> LLMResult:
             if t_first_token is None:
                 t_first_token = time.perf_counter()
             chunks.append(content)
+            if on_token:
+                on_token(content)
 
     t_end = time.perf_counter()
 
@@ -215,3 +116,35 @@ def call_llm(turns: list) -> LLMResult:
         completion_tokens = usage.completion_tokens if usage else 0,
         total_tokens      = usage.total_tokens      if usage else 0,
     )
+
+
+# ─── Main call ────────────────────────────────────────────────────────────────
+
+def call_llm(turns: list, on_token: Callable[[str], None] = None) -> LLMResult:
+    """
+    Call LLM for copilot analysis (analyze last "Other" turn).
+    Returns LLMResult with full text + latency + token metrics.
+    Optional on_token callback receives each content chunk as it arrives.
+    """
+    system_prompt     = _build_system_prompt(COPILOT_SYSTEM_PROMPT)
+    conversation_text = _build_conversation_text(turns)
+
+    return _run_stream(system_prompt, conversation_text, on_token)
+
+
+def call_verification_llm(turns: list, on_token: Callable[[str], None] = None) -> LLMResult:
+    """
+    Call LLM for user speech verification.
+    Returns LLMResult with verification JSON in text field.
+    Optional on_token callback receives each content chunk as it arrives.
+    """
+    system_prompt     = _build_system_prompt(VERIFICATION_SYSTEM_PROMPT)
+    conversation_text = _build_conversation_text(turns)
+
+    return _run_stream(
+        system_prompt,
+        f"Conversation so far:\n{conversation_text}\n\nVerify the last message from 'You'.",
+        on_token,
+    )
+
+

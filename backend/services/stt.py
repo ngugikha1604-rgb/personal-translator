@@ -1,11 +1,9 @@
-from groq import Groq
-from config import GROQ_API_KEY, WHISPER_MODEL
-
-client = Groq(api_key=GROQ_API_KEY)
+from config import WHISPER_MODEL
+from services.groq_client import get_client
 
 
 def transcribe_audio(audio_bytes: bytes, filename: str = "audio.webm") -> str:
-    transcription = client.audio.transcriptions.create(
+    transcription = get_client().audio.transcriptions.create(
         file=(filename, audio_bytes),
         model=WHISPER_MODEL,
         language="en"

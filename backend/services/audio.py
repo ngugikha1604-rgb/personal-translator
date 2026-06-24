@@ -18,7 +18,7 @@ import sounddevice as sd
 SAMPLE_RATE   = 16_000   # Hz — Whisper optimal
 CHANNELS      = 1        # Mono
 DTYPE         = "int16"  # 16-bit PCM
-CHUNK_SECONDS = 2.0      # Duration per chunk — tune empirically after latency testing
+CHUNK_SECONDS = 0.5      # Duration per chunk — 0.5s for lower latency
 
 
 def record_chunk(duration: float = CHUNK_SECONDS) -> bytes:
