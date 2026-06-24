@@ -18,9 +18,12 @@ import time
 from config import GROQ_API_KEY
 from services.audio import record_chunk, CHUNK_SECONDS
 from services.conversation import conversation
-from services.copilot import copilot_service
+from services.copilot import copilot_service, CopilotResult
 from services.display import display
-from services.speech import speech_service
+from services.speech import speech_service, SpeechResult
+
+DIM   = "\033[90m"
+RESET = "\033[0m"
 
 
 # ─── Startup validation ───────────────────────────────────────────────────────
@@ -29,6 +32,30 @@ def _validate() -> None:
     if not GROQ_API_KEY:
         print("Error: GROQ_API_KEY is not set. Check your .env file.")
         sys.exit(1)
+
+
+# ─── Logging ─────────────────────────────────────────────────────────────────
+
+def _log_turn(
+    turn_n: int,
+    speech: SpeechResult,
+    result: CopilotResult,
+) -> None:
+    """Structured per-turn metrics log."""
+    total_ms = speech.stt_ms + result.llm_ms
+    tokens   = (
+        f"{result.prompt_tokens}p + {result.completion_tokens}c = {result.total_tokens} tokens"
+        if result.total_tokens > 0 else "tokens: n/a (upgrade groq sdk)"
+    )
+
+    print(
+        f"\n{DIM}"
+        f"[TURN {turn_n}]\n"
+        f"  stt    {speech.stt_ms:>5}ms   \"{speech.transcript}\"\n"
+        f"  llm    {result.llm_ms:>5}ms   ttft: {result.ttft_ms}ms  |  {tokens}\n"
+        f"  total  {total_ms:>5}ms"
+        f"{RESET}"
+    )
 
 
 # ─── Keyboard (push-to-mute) ──────────────────────────────────────────────────
@@ -45,8 +72,9 @@ def _setup_keyboard(muted: threading.Event) -> None:
 
         def on_press(key):
             if key == keyboard.Key.space:
+                if not muted.is_set():          # only print on first press, not on repeat
+                    display.status("muted — you're speaking")
                 muted.set()
-                display.status("muted — you're speaking")
             elif hasattr(key, "char") and key.char == "q":
                 display.status("Quit.")
                 sys.exit(0)
@@ -72,13 +100,13 @@ def main() -> None:
     _validate()
     display.header()
 
-    muted = threading.Event()
+    muted    = threading.Event()
+    turn_n   = 0
     _setup_keyboard(muted)
     display.status("listening...")
 
     try:
         while True:
-            # Push-to-mute: skip chunk if user is speaking
             if muted.is_set():
                 time.sleep(0.05)
                 continue
@@ -92,11 +120,13 @@ def main() -> None:
                 continue
 
             display.status("processing...")
+            turn_n += 1
 
             # Add transcript to conversation, run LLM analysis
             conversation.add_other(speech.transcript)
             try:
                 result = copilot_service.analyze_turns(conversation.get_all())
+                _log_turn(turn_n, speech, result)
                 display.result(result.intent, result.reply)
             except Exception as e:
                 display.error(f"Analysis failed: {e}")
@@ -104,7 +134,7 @@ def main() -> None:
             display.status("listening...")
 
     except KeyboardInterrupt:
-        display.status("Session ended.")
+        display.status(f"Session ended. {turn_n} turns.")
 
 
 if __name__ == "__main__":

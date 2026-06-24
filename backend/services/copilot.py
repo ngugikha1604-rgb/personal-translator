@@ -7,11 +7,9 @@ This service only knows about text — not audio, not HTTP.
 """
 
 import json
-import time
 from dataclasses import dataclass
-from typing import Generator
 
-from services.llm import stream_analysis
+from services.llm import call_llm
 
 
 # ─── Field extractors ─────────────────────────────────────────────────────────
@@ -30,14 +28,17 @@ def _extract_reply(payload: dict) -> str:
 
 @dataclass(frozen=True)
 class CopilotResult:
-    intent:  str
-    summary: str   # internal only — never displayed
-    reply:   str
-    raw:     str
-    llm_ms:  int
+    intent:            str
+    summary:           str   # internal only — never displayed
+    reply:             str
+    raw:               str
+    llm_ms:            int
+    ttft_ms:           int
+    prompt_tokens:     int
+    completion_tokens: int
+    total_tokens:      int
 
     def display_payload(self) -> dict:
-        """For any external consumer that needs the displayable fields."""
         return {"intent": self.intent, "reply": self.reply}
 
 
@@ -46,22 +47,24 @@ class CopilotResult:
 class CopilotService:
     """LLM-based conversation analysis. Input: turns list. Output: CopilotResult."""
 
-    def stream_turns(self, turns: list) -> Generator[str, None, None]:
-        yield from stream_analysis(turns)
-
     def analyze_turns(self, turns: list) -> CopilotResult:
-        t0 = time.perf_counter()
-        full_text = "".join(self.stream_turns(turns))
-        llm_ms = round((time.perf_counter() - t0) * 1000)
-        print(f"[LAT] LLM: {llm_ms}ms")
+        llm = call_llm(turns)
 
-        parsed = json.loads(full_text)
+        try:
+            parsed = json.loads(llm.text)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"LLM returned invalid JSON: {llm.text!r}") from e
+
         return CopilotResult(
-            intent=_extract_intent(parsed),
-            summary=_extract_summary(parsed),
-            reply=_extract_reply(parsed),
-            raw=full_text,
-            llm_ms=llm_ms,
+            intent            = _extract_intent(parsed),
+            summary           = _extract_summary(parsed),
+            reply             = _extract_reply(parsed),
+            raw               = llm.text,
+            llm_ms            = llm.total_ms,
+            ttft_ms           = llm.ttft_ms,
+            prompt_tokens     = llm.prompt_tokens,
+            completion_tokens = llm.completion_tokens,
+            total_tokens      = llm.total_tokens,
         )
 
 
