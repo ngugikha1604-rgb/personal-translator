@@ -1,357 +1,443 @@
 # AGENTS.md — Conversation Copilot
 
-This file is the authoritative reference for AI coding assistants working on this codebase.
+Authoritative guide for AI coding assistants working on this repo.
 
-Read this entire file before making any changes. Every section exists for a reason.
+Read before changing code.
 
 ---
 
 ## What This Project Is
 
-A real-time AI copilot for live English conversations. The system listens to the other person, detects their intent, and suggests a short honest reply — displayed on smart glasses as an overlay.
+Real-time AI copilot for live English conversations.
+
+System listens to other person, detects intent, and suggests short truthful reply fragment. User still decides what to say.
+
+Current goal: prepare software architecture so it can later run on constrained hardware such as phone + earbuds/AirPods-style mics, then glasses or other lightweight display.
 
 **This is not:**
-- A translator
-- A chatbot
-- A voice assistant
-- An automatic responder
+- translator
+- chatbot
+- voice assistant
+- automatic responder
 
-The user always decides what to say. The AI only reduces the cognitive load of figuring out what to say.
+AI reduces conversation latency. It does not speak for user.
+
+---
+
+## Current Product Direction
+
+Old repo docs described Flask routes and web frontend. Current code is now a **desktop CLI hardware prototype**.
+
+Current runtime:
+
+```
+Mic input
+  ↓
+audio.py records short WAV chunk
+  ↓
+vad.py skips likely silence
+  ↓
+stt.py sends audio to Groq Whisper
+  ↓
+conversation.py stores rolling turns
+  ↓
+llm.py sends turns + user profile to Groq LLaMA
+  ↓
+copilot.py parses fixed JSON
+  ↓
+display.py prints glasses-like terminal overlay
+```
+
+Near-term target: keep interfaces stable while replacing internals for device deployment.
+
+Production target examples:
+- Phone app does capture, VAD, STT/LLM orchestration
+- AirPods / earbuds provide mic input and optional push-to-mute affordance
+- Glasses / phone overlay / watch provide display
+- Cloud remains optional background learning path, never real-time dependency
 
 ---
 
 ## Non-Negotiable Principles
 
-These constraints must never be violated, regardless of what feature is being built:
+1. **Truthfulness** — LLM must never invent facts about user. Truthfulness rule must stay in system prompt.
 
-1. **Truthfulness** — LLM must never invent facts about the user. The truthfulness rule in the system prompt must always be present.
+2. **Latency first** — Every feature judged by time-to-useful-reply. Do not add real-time steps unless needed.
 
-2. **Latency is the primary metric** — Every feature must be evaluated by whether it makes the system faster or slower. Never add processing steps in the real-time path without strong justification.
+3. **Fixed output schema** — Always:
 
-3. **Output schema is fixed** — Always `{ "intent": string, "summary": string, "reply": string }`. Do not add or remove fields without updating all consumers.
+```json
+{ "intent": "string", "summary": "string", "reply": "string" }
+```
 
-4. **Reply is a short phrase, not a full sentence** — The reply field suggests the key point(s) for the user to say in their own words. It is not a script.
+Do not add/remove fields without updating every consumer.
 
-5. **Summary is internal only** — `summary` is used by the LLM for reasoning context. It is never displayed to the user.
+4. **Reply is short phrase** — `reply` is key point(s), not full script. User speaks in own words.
 
-6. **Services are swappable, routes are not** — STT and LLM implementations will change (Groq → local). Routes must never contain model-specific code. All model logic stays inside `services/`.
+5. **Summary is internal only** — `summary` helps reasoning. Never display it.
 
-7. **Singleton conversation buffer** — `conversation` in `services/conversation.py` is shared state across all routes. Never instantiate a new buffer inside a route.
+6. **Services swappable, entrypoint thin** — Model, audio, VAD, display, storage internals belong in `services/`. `main.py` orchestrates only.
+
+7. **Singleton conversation buffer** — `conversation` in `services/conversation.py` is shared session state. Do not create new buffers inside runtime flow.
+
+8. **Real-time path isolated** — Hardware capture, STT, LLM, and display path must not depend on background learning/cloud sync.
 
 ---
 
-## System Architecture
-
-### Two Completely Independent Paths
-
-```
-REAL-TIME PATH                          LEARNING PATH
-──────────────────────────────          ──────────────────────────────
-Mic 1 (outward, beamforming)            Mic 2 (toward user's mouth)
-  ↓                                       ↓
-Noise suppression                       Capture user's speech
-  ↓                                       ↓
-VAD                                     Log to buffer as "user"
-  ↓                                       ↓
-STT (local Whisper)                     Cache after session
-  ↓                                       ↓
-Conversation Buffer                     Push to cloud (background)
-  ↓                                       ↓
-LLM (local fine-tuned)                  Cloud model analyzes
-  ↓                                       ↓
-{ intent, summary, reply }              Update user profile
-  ↓                                       ↓
-Glasses display                         Sync back to device
-```
-
-Never mix these two paths. Real-time path must have no dependency on learning path.
-
-### Processing Model
-
-Audio is processed **continuously in rolling chunks** — not only on silence detection.
-
-Every ~N seconds (empirically determined, estimated 1.5–2s):
-1. Take latest audio chunk
-2. Run STT
-3. Append to conversation buffer
-4. Run LLM analysis
-5. Update display
-
-The display updates while the other person is still speaking. This is intentional — it gives the user time to read and process the suggestion before needing to respond.
-
----
-
-## Repository Layout
+## Current Repository Layout
 
 ```
 personal_translator/
 ├── README.md
-├── AGENTS.md                       ← you are here
-├── backend/
-│   ├── app.py                      # Flask app factory, blueprint registration
-│   ├── config.py                   # All constants and config values
-│   ├── requirements.txt
-│   ├── .env.example
-│   ├── routes/
-│   │   ├── transcribe.py           # POST /transcribe
-│   │   └── analyze.py              # GET /analyze, POST /log_user, POST /clear
-│   └── services/
-│       ├── stt.py                  # STT abstraction layer
-│       ├── llm.py                  # LLM prompt + streaming
-│       └── conversation.py         # ConversationBuffer
-└── frontend/
-    └── ...                         # Temporary desktop UI, will be replaced
+├── AGENTS.md
+└── backend/
+    ├── main.py                  # CLI entry point and real-time loop
+    ├── config.py                # Env, model names, file paths, constants
+    ├── requirements.txt
+    ├── .env.example
+    ├── user_profile.json        # Local user facts/style injected into prompt
+    └── services/
+        ├── audio.py             # Mic capture: record_chunk() -> WAV bytes
+        ├── vad.py               # Speech gate: has_speech()
+        ├── stt.py               # STT abstraction: transcribe_audio()
+        ├── speech.py            # VAD + STT service
+        ├── conversation.py      # Rolling ConversationBuffer singleton
+        ├── context.py           # Optional session context manager
+        ├── llm.py               # Prompt + LLM call + latency metrics
+        ├── copilot.py           # JSON parse + CopilotResult
+        └── display.py           # Output layer, terminal now, glasses later
 ```
 
----
-
-## Component Reference
-
-### `app.py`
-Flask app factory. Registers blueprints only. No business logic here.
+No Flask routes exist in current code. Do not add HTTP layer unless explicitly asked.
 
 ---
 
-### `config.py`
-Single source of truth for all configuration. Always read values from here, never hardcode.
+## Runtime Flow
 
-| Variable | Purpose |
-|----------|---------|
-| `GROQ_API_KEY` | Groq API key (loaded from .env) |
-| `USER_PROFILE` | User's interests and communication style — injected into LLM system prompt |
-| `WHISPER_MODEL` | STT model name |
-| `LLM_MODEL` | LLM model name |
-| `CONVERSATION_MAX_TURNS` | Rolling buffer size |
+```
+[Start]
+python backend/main.py
 
-**When changing models:** update only `WHISPER_MODEL` / `LLM_MODEL` here. Services read from config, routes never touch model names.
+[Loop]
+record_chunk(CHUNK_SECONDS)
+  → has_speech(audio_bytes)
+  → transcribe_audio(audio_bytes)
+  → conversation.add_other(transcript)
+  → call_llm(conversation.get_all())
+  → parse { intent, summary, reply }
+  → display reply + intent
 
-**When switching to local models:** update `services/stt.py` and `services/llm.py` internals. Config still holds model names/paths. Routes do not change.
+[Controls]
+Hold SPACE → mute while user speaks
+Q          → quit
+Ctrl+C     → quit
+```
+
+Important: current system captures other person only. User's actual spoken replies are not yet logged.
 
 ---
 
-### `services/conversation.py`
+## Hardware-Ready Architecture
 
-**Class:** `ConversationBuffer`
+Keep these interfaces stable. Hardware migration should replace internals only.
 
-Maintains the rolling window of the current conversation session.
+### Audio Input
+
+File: `backend/services/audio.py`
 
 ```python
-conversation.add(speaker: str, text: str)   # "other" or "user"
-conversation.get_all() -> list              # returns list of { speaker, text }
-conversation.clear()                        # resets buffer
+def record_chunk(duration: float = CHUNK_SECONDS) -> bytes
 ```
 
-**Speaker semantics:**
-- `"other"` — the person the user is talking to (transcribed from Mic 1)
-- `"user"` — what the user actually said (captured from Mic 2, logged via `/log_user`)
+Current: `sounddevice` default desktop mic, WAV bytes.
 
-**Implementation:** `collections.deque` with `maxlen=CONVERSATION_MAX_TURNS`
+Future replacements:
+- phone microphone
+- Bluetooth earbuds mic
+- AirPods / headset input through OS audio APIs
+- beamformed mic array
 
-**Rules:**
-- Exported as singleton: `conversation = ConversationBuffer()`
-- Do not add persistence, disk I/O, or database here
-- This is intentionally ephemeral session memory (L1 cache)
-- Long-term storage is handled by the cloud learning pipeline, not here
+Rules:
+- keep return type as audio bytes unless all consumers are changed together
+- do not put STT or VAD in `audio.py`
+- do not add device-specific logic to `main.py`
 
----
+### VAD
 
-### `services/stt.py`
+File: `backend/services/vad.py`
 
-STT abstraction layer. Converts raw audio bytes to transcript string.
+```python
+def has_speech(audio_bytes: bytes, min_size_bytes: int = 8000) -> bool
+```
+
+Current: cheap byte-variance heuristic.
+
+Future replacements:
+- WebRTC VAD
+- Silero VAD
+- platform-native voice activity APIs
+
+Rules:
+- VAD must be fast
+- false negatives are worse than false positives during conversation
+- avoid cloud VAD in real-time path
+
+### STT
+
+File: `backend/services/stt.py`
 
 ```python
 def transcribe_audio(audio_bytes: bytes, filename: str = "audio.webm") -> str
 ```
 
-**Current implementation:** Groq Whisper API
+Current: Groq Whisper API.
 
-**Migration to local Whisper:**
-- Replace the Groq client call inside this function only
-- Keep function signature identical — callers do not change
-- Options: `faster-whisper`, `whisper.cpp` Python bindings
+Future replacements:
+- local Whisper
+- faster-whisper
+- whisper.cpp
+- phone OS speech API, if latency/privacy acceptable
 
-**Notes:**
-- Language hardcoded to `"en"` — English input only for now
-- This function handles Mic 1 audio only (other person's speech)
-- Mic 2 (user's own speech) may use a separate simpler transcription path when implemented
+Rules:
+- keep function signature stable
+- language is English for MVP
+- routes/entrypoint must not know model details
 
----
+### LLM
 
-### `services/llm.py`
-
-Builds the system prompt, calls the LLM, streams response tokens.
+File: `backend/services/llm.py`
 
 ```python
-def stream_analysis(turns: list) -> Generator[str, None, None]
+def call_llm(turns: list) -> LLMResult
 ```
 
-Yields raw text tokens. Caller is responsible for SSE formatting.
+Current: Groq LLaMA 3.3 70B streaming call.
 
-**Prompt design:**
-- System prompt includes `USER_PROFILE` from `config.py`
-- Conversation formatted as `Other: ...` / `You: ...`
-- LLM instructed to return **only raw JSON** — no markdown, no code fences
-- Temperature: 0.3 (low, reduces hallucination)
-- max_tokens: 300 (enough for JSON output, prevents runaway generation)
+Future replacements:
+- local model on phone
+- small on-device model
+- quantized model through llama.cpp / MLX / Core ML / NNAPI
+- cloud fallback, only if latency acceptable
 
-**Output contract:**
-```json
-{
-  "intent": "short phrase, max ~6 words, English",
-  "summary": "one sentence context, English — NOT displayed to user",
-  "reply": "short phrase with key point(s) to say, English"
-}
+Rules:
+- keep output schema fixed
+- preserve truthfulness rule
+- preserve low-token output
+- keep latency metrics: TTFT and total time
+
+### Copilot Parser
+
+File: `backend/services/copilot.py`
+
+```python
+copilot_service.analyze_turns(turns) -> CopilotResult
 ```
 
-**Critical — do not remove this rule from the system prompt:**
-> "The reply MUST be truthful. Never invent facts about the user."
+Rules:
+- parse and validate LLM JSON here
+- `summary` remains internal
+- `display_payload()` must expose only `intent` and `reply`
 
-**Migration to local LLM:**
-- Replace Groq client with local inference (llama-cpp-python, ollama, etc.)
-- Keep `stream_analysis` signature and generator behavior identical
-- Routes do not change
+### Display
+
+File: `backend/services/display.py`
+
+Current: terminal ANSI output.
+
+Future replacements:
+- phone overlay
+- watch display
+- glasses optical overlay
+- earbuds companion app UI
+
+Rules:
+- display only `reply` and `intent`
+- never display `summary`
+- optimize for single glance
+
+### Conversation Buffer
+
+File: `backend/services/conversation.py`
+
+```python
+conversation.add(speaker: str, text: str)
+conversation.add_other(text: str)
+conversation.add_user(text: str)
+conversation.get_all() -> list
+conversation.clear()
+```
+
+Speaker semantics:
+- `"other"` — person user is talking to
+- `"user"` — what user actually said, when Mic 2 / self-speech logging exists
+
+Rules:
+- in-memory rolling buffer only
+- no disk I/O here
+- no database here
+- no cloud sync here
+
+### Context
+
+File: `backend/services/context.py`
+
+Optional session hints:
+- meeting type
+- other person name/role
+- user goal
+- language level
+
+Current: can inject context into prompt, but no CLI/UI setter exists yet.
+
+Rules:
+- manual context beats auto-detected context
+- low-confidence auto context ignored
+- context must not become long-term memory
 
 ---
 
-### `routes/transcribe.py`
+## Real-Time Path vs Learning Path
 
-**`POST /transcribe`**
+Keep separate.
 
-Receives audio file → runs STT → appends to buffer as `"other"` → returns transcript.
+```
+REAL-TIME PATH
+Mic / earbuds
+  ↓
+VAD
+  ↓
+STT
+  ↓
+Conversation buffer
+  ↓
+LLM
+  ↓
+Display
+```
 
-Request: `multipart/form-data`, field name `audio`
-Response: `{ "transcript": "..." }`
+```
+LEARNING PATH (future)
+User speech + session logs
+  ↓
+Local cache after session
+  ↓
+Cloud sync in background
+  ↓
+Profile learning
+  ↓
+Updated user_profile.json / device profile
+```
 
-Does not trigger analysis automatically. Caller must hit `/analyze` separately.
+Learning path must never block real-time path.
+
+Do not implement learning path unless explicitly asked.
 
 ---
 
-### `routes/analyze.py`
+## Prompt Contract
 
-**`GET /analyze`** — SSE stream
+System prompt in `services/llm.py` must include:
+- user profile
+- optional context block
+- fixed output schema
+- truthfulness rule
+- short reply rule
+- no extra fields rule
 
-Reads buffer → calls `stream_analysis()` → streams tokens as SSE events.
+Critical rule that must stay:
 
-```
-data: {"token": "..."}          ← each token as it arrives
-data: {"done": true, "full": "{...}"}   ← complete JSON when done
-data: {"error": "..."}          ← on exception
-```
+> The reply MUST be truthful. Never invent facts about the user.
 
-Frontend/display layer is responsible for assembling tokens into full JSON and parsing `intent` + `reply` for display.
-
-**`POST /log_user`**
-
-Logs what the user actually said. Called after the user speaks their response.
-
-Request: `{ "text": "..." }`
-
-This keeps the conversation buffer accurate for subsequent LLM calls. Without this, the LLM only sees the other person's side of the conversation.
-
-**`POST /clear`**
-
-Resets the conversation buffer. Call at the start of each new conversation session.
+Output must be raw JSON only. No markdown. No code fences.
 
 ---
 
-## Full Conversation Cycle
+## Display Contract
+
+Target layout:
 
 ```
-[Session starts]
-POST /clear
-
-[Other person speaks]
-POST /transcribe  →  STT  →  buffer.add("other", text)
-
-[System analyzes]
-GET /analyze  →  buffer.get_all()  →  LLM stream  →  { intent, summary, reply }
-
-[Display updates on glasses]
-intent → small text below
-reply  → large text primary
-summary → not displayed
-
-[User speaks their reply]
-POST /log_user  →  buffer.add("user", text)
-
-[Other person speaks again]
-→ repeat from POST /transcribe
+studying AI, building LLM stuff      ← reply, primary
+asking about field of study          ← intent, secondary
 ```
+
+Constraints:
+- reply: 5–9 words target, natural spoken fragment
+- intent: max ~6 words
+- summary: never shown
+- readable in ~0.5 seconds
+- no paragraphs, no scripts
 
 ---
 
-## Display Constraints
+## Config
 
-The glasses display has strict constraints that affect what the LLM should generate:
+File: `backend/config.py`
 
-- **Reply:** Short phrase, key point(s) only. Not a full sentence. User speaks in their own words.
-- **Intent:** Short phrase, ~4–6 words max. Describes what the other person wants.
-- **Summary:** Never displayed. Keep it in the JSON for LLM reasoning continuity but strip it before display.
+Current values:
+- `GROQ_API_KEY`
+- `WHISPER_MODEL`
+- `LLM_MODEL`
+- `CONVERSATION_MAX_TURNS`
+- `USER_PROFILE_PATH`
 
-**Target layout:**
-```
-studying AI and software           ← reply  (large, primary)
-Asking your background             ← intent (small, below)
-```
-
-The display must be readable in a single glance (~0.5 seconds) while maintaining eye contact with the other person.
-
----
-
-## Storage Architecture
-
-```
-On-device
-├── User profile (JSON)     — loaded into every LLM system prompt call
-└── Conversation cache      — raw session data pending cloud sync
-
-Cloud
-├── Conversation history    — permanent record
-├── People profiles         — NOT stored on device; lazy loaded when needed
-└── Learning pipeline       — background job, runs powerful model
-                              extracts facts → updates user profile → syncs back
-```
-
-**User profile update rules (cloud pipeline):**
-- Durable facts are kept: interests, background, skills, communication style
-- Outdated facts are overwritten
-- Ephemeral facts are ignored: emotions, one-time events, temporary states
-- People encountered are stored in cloud only, never on device in MVP
-
----
-
-## Out of Scope (MVP)
-
-Do not implement these unless explicitly instructed:
-
-- Multi-speaker / group conversation (1-on-1 only)
-- People profiles on device
-- Fine-tuning pipeline
-- Long-term memory on device beyond user profile
-- Emotion or psychological analysis
-- Hardware integration (glasses, mic array)
-- User authentication
-- Multi-language support (English input only)
-
----
-
-## Environment Variables
-
-| Variable | Description |
-|----------|-------------|
-| `GROQ_API_KEY` | Groq API key for Whisper STT and LLaMA LLM |
-
-See `.env.example` for template.
+Rules:
+- model names live in config
+- services read config
+- `main.py` does not hardcode model names
+- secrets stay in `.env`, never committed
 
 ---
 
 ## Running Locally
 
+Windows:
+
 ```bash
 cd backend
 python -m venv venv
-venv\Scripts\activate        # Windows
+venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env         # fill in GROQ_API_KEY
-python app.py                # starts on http://localhost:5000
+copy .env.example .env
 ```
+
+Fill `GROQ_API_KEY` in `.env`.
+
+Run:
+
+```bash
+python main.py
+```
+
+Controls:
+- hold `SPACE` while user speaks
+- press `Q` to quit
+- `Ctrl+C` to quit
+
+---
+
+## Out of Scope Unless Asked
+
+- Flask routes / web frontend
+- authentication
+- multi-speaker group conversation
+- auto-replying
+- translation feature
+- emotion/psychological analysis
+- cloud learning pipeline
+- long-term people profiles on device
+- hardware-specific SDK integration
+- mobile app scaffolding
+
+---
+
+## Engineering Style
+
+- smallest diff wins
+- stdlib/native first
+- no dependency unless needed
+- no abstraction with one implementation unless it protects hardware/model swap boundary
+- keep real-time path boring and measurable
+- delete stale docs/code instead of supporting two architectures
+- add tests/checks only for non-trivial logic
+- preserve current service boundaries unless strong reason

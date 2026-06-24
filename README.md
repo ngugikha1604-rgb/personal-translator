@@ -1,253 +1,402 @@
 # Personal Translator — Conversation Copilot
 
-A real-time AI copilot that helps the user understand intent and respond faster in live English conversations.
+Real-time AI copilot for live English conversations.
 
-Not a translator. Not a chatbot. A **cognitive co-processor** that reduces conversation latency.
+System listens to the other person, detects intent, and suggests a short truthful reply fragment. User still decides what to say.
+
+Not a translator. Not a chatbot. Not a voice assistant. Not an automatic responder.
+
+Goal now: keep desktop prototype simple while shaping architecture so it can later move onto constrained hardware: phone + earbuds/AirPods-style mic input, then glasses / watch / phone overlay display.
 
 ---
 
 ## Core Problem
 
-When conversing in a second language, the brain must:
+Live second-language conversation has latency.
 
-1. Hear the words
-2. Decode language
+User must:
+
+1. Hear words
+2. Decode English
 3. Understand intent
-4. Plan a response
-5. Translate to target language
-6. Speak
+4. Decide response
+5. Speak naturally
 
-Steps 3–5 can take 2–5 seconds. This is **Conversation Latency** — the real problem this project solves.
+This project reduces steps 3–4 latency. It gives user a glanceable reply direction, not a script.
 
 ---
 
-## How It Works
+## Current Status
 
-The system listens continuously to the other person's speech. As they speak, it processes audio in rolling chunks and updates the display in real-time — so by the time they finish talking, the user already knows what to say.
+Current code is a **desktop CLI hardware prototype**.
 
-**Output per utterance:**
+It uses:
+
+| Layer | Current implementation | Future hardware target |
+|---|---|---|
+| Mic input | `sounddevice` default desktop mic | phone mic, earbuds/AirPods mic, beamformed mic array |
+| VAD | cheap byte-variance heuristic | WebRTC VAD, Silero VAD, platform VAD |
+| STT | Groq Whisper API | local Whisper, whisper.cpp, phone OS speech API |
+| LLM | Groq LLaMA 3.3 70B | quantized local model, phone NPU/Core ML/NNAPI, cloud fallback |
+| Display | terminal ANSI overlay | glasses, phone overlay, watch, companion app |
+| Memory | in-memory rolling buffer | same real-time buffer + optional background learning later |
+
+No Flask server. No web frontend. No routes.
+
+---
+
+## Runtime Flow
+
+```text
+Mic input
+  ↓
+backend/services/audio.py
+record_chunk() returns WAV bytes
+  ↓
+backend/services/vad.py
+has_speech() skips likely silence
+  ↓
+backend/services/stt.py
+transcribe_audio() sends audio to Groq Whisper
+  ↓
+backend/services/conversation.py
+conversation.add_other() stores rolling turns
+  ↓
+backend/services/llm.py
+call_llm() sends turns + user profile to Groq LLaMA
+  ↓
+backend/services/copilot.py
+parses fixed JSON
+  ↓
+backend/services/display.py
+prints reply + intent in terminal
+```
+
+Output shape is fixed:
+
 ```json
 {
-  "intent": "Asking about your field of study",
-  "summary": "They want to know your academic background.",
-  "reply": "studying AI and software"
+  "intent": "asking about field of study",
+  "summary": "They want to know what the user is currently studying.",
+  "reply": "studying AI, mostly building LLM stuff"
 }
 ```
 
-`intent` and `reply` are displayed on the glasses. `summary` is used internally by the LLM for reasoning but never shown to the user.
+Display shows only:
 
----
-
-## Display Design
-
-Target display: **optical waveguide glasses** (similar to waveguide tech in Xreal, etc.)
-
-- User maintains full eye contact with the other person
-- Information appears as an overlay, only visible to the user
-- Designed to be read in a single glance — no scrolling, no reading paragraphs
-
-**Layout:**
-```
-studying AI and software           ← reply (large, primary)
-Asking your background             ← intent (small, secondary)
+```text
+studying AI, mostly building LLM stuff
+asking about field of study
 ```
 
-**Reply format:** Short phrase capturing the key point(s) to say. Not a full sentence — the user speaks in their own words. This keeps responses natural and truthful.
-
----
-
-## Architecture Overview
-
-### Two Independent Paths
-
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-REAL-TIME PATH (latency critical)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Mic 1 (outward, beamforming)
-  ↓
-Noise suppression (RNNoise / DeepFilterNet)
-  ↓
-VAD — Voice Activity Detection (silero-VAD)
-  ↓
-Whisper STT (local, runs on device)
-  ↓
-Conversation Buffer (rolling window, last N turns)
-  ↓
-LLM — Intent + Reply generation (local fine-tuned model)
-  ↓
-JSON: { intent, summary, reply }
-  ↓
-Glasses display (optical waveguide overlay)
-
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-LEARNING PATH (background, no latency requirement)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Mic 2 (toward user's mouth)
-  ↓
-Capture user's own speech
-  ↓
-Log to conversation buffer as "user"
-  ↓
-Cache conversation locally after session ends
-  ↓
-Push to cloud (background)
-  ↓
-Powerful cloud model analyzes conversation
-  ↓
-Extract facts worth storing about user
-  ↓
-Update user profile
-  ↓
-Sync updated profile back to device
-```
-
----
-
-## Audio Hardware Design
-
-**Dual microphone setup:**
-
-| Mic | Placement | Purpose |
-|-----|-----------|---------|
-| Mic 1 | Outward-facing on frame | Capture other person's speech |
-| Mic 2 | Toward user's mouth | Capture user's own speech |
-
-Two channels are fully independent — no complex voice filtering needed because separation happens at hardware level.
-
-Mic 1 uses **beamforming** (2–3 mic array) to focus audio pickup toward the front and reject surrounding noise.
-
-**Software audio pipeline (Mic 1 only):**
-```
-Raw audio → Noise suppression → VAD → STT
-```
-
----
-
-## Processing Model
-
-The system processes audio **continuously in rolling chunks**, not just on silence detection.
-
-Every ~N seconds (exact value TBD via empirical testing, estimate 1.5–2s), the system:
-1. Takes latest audio chunk from Mic 1
-2. Runs STT
-3. Updates conversation buffer
-4. Runs LLM analysis
-5. Updates glasses display
-
-This means intent and reply start appearing while the other person is still speaking. By the time they finish, the user is already ready to respond.
-
----
-
-## Storage Architecture
-
-```
-On-device (lightweight, always available)
-├── User profile        — facts about the user, used in every LLM call
-└── Conversation cache  — temporary, pending cloud sync
-
-Cloud (no size constraint, background only)
-├── Conversation history
-├── People profiles     — lazy loaded only when needed, not stored on device
-└── Learning pipeline   — analyzes conversations, updates user profile
-```
-
-**User profile update flow:**
-- Cloud model reads cached conversation after session
-- Extracts durable facts: interests, background, communication patterns
-- Overwrites outdated facts, adds new ones
-- Syncs updated profile to device
-
----
-
-## MVP Scope
-
-**Phase 1 — Desktop proof of concept (current)**
-- Web frontend as temporary display
-- Groq Whisper API for STT
-- Groq LLaMA for LLM
-- Manual audio recording (push to transcribe)
-- Validate: intent detection quality, reply usefulness, latency
-
-**Phase 2 — Mobile**
-- Move to mobile interface
-- Begin continuous audio processing
-
-**Phase 3 — Glasses integration**
-- Optical waveguide display
-- Dual mic hardware
-- On-device STT (faster-whisper or whisper.cpp)
-- Beamforming audio pipeline
-
-**Phase 4 — Personalized local model**
-- Fine-tuned small model trained on user's conversation history
-- Replies increasingly match user's actual thinking and style
-- Fully offline capable
-
----
-
-## Current Tech Stack
-
-| Layer | MVP (now) | Production target |
-|-------|-----------|-------------------|
-| STT | Groq Whisper API | Local Whisper (faster-whisper / whisper.cpp) |
-| LLM | Groq LLaMA 3.3 70B | Local fine-tuned small model |
-| Noise suppression | — | RNNoise / DeepFilterNet |
-| VAD | — | silero-VAD |
-| Backend | Python / Flask | Python (optimized) |
-| Display | Web frontend | Optical waveguide glasses overlay |
-| Storage | In-memory only | On-device profile + cloud learning |
-
----
-
-## Core Principles
-
-**Latency first** — Every design decision is evaluated by one question: does this reduce time-to-response?
-
-**Truthfulness** — The LLM must never invent facts about the user. Reply suggestions must reflect reality.
-
-**Glanceability** — Display is designed to be understood in under 0.5 seconds. No long text.
-
-**User decides** — The system suggests. The user chooses what to say. AI is a co-processor, not a replacement.
-
-**1-on-1 only (MVP)** — Multi-speaker / group conversation is out of scope for now.
+`summary` is internal only.
 
 ---
 
 ## Project Structure
 
-```
+```text
 personal_translator/
 ├── README.md
 ├── AGENTS.md
-├── backend/
-│   ├── app.py                  # Flask app factory
-│   ├── config.py               # Models, user profile, constants
-│   ├── requirements.txt
-│   ├── .env.example
-│   ├── routes/
-│   │   ├── transcribe.py       # POST /transcribe
-│   │   └── analyze.py          # GET /analyze (SSE), POST /log_user, POST /clear
-│   └── services/
-│       ├── stt.py              # Speech-to-text abstraction
-│       ├── llm.py              # LLM prompt + streaming
-│       └── conversation.py     # ConversationBuffer singleton
-└── frontend/
-    └── ...                     # Temporary desktop UI (replaced by glasses)
+└── backend/
+    ├── main.py                  # CLI entry point and real-time loop
+    ├── config.py                # Env, model names, constants
+    ├── requirements.txt
+    ├── .env.example
+    ├── user_profile.json        # Local user facts/style injected into prompt
+    └── services/
+        ├── audio.py             # Mic capture: record_chunk() -> WAV bytes
+        ├── vad.py               # Speech gate: has_speech()
+        ├── stt.py               # Groq Whisper STT wrapper
+        ├── speech.py            # VAD + STT orchestration
+        ├── conversation.py      # Rolling in-memory buffer singleton
+        ├── context.py           # Optional session context manager
+        ├── llm.py               # Prompt + LLM call + latency metrics
+        ├── copilot.py           # JSON parse + CopilotResult
+        └── display.py           # Terminal now, glasses later
 ```
+
+---
+
+## Hardware-Ready Boundaries
+
+Main rule: replace internals, keep service contracts stable.
+
+### Audio
+
+```python
+record_chunk(duration: float) -> bytes
+```
+
+Current: desktop mic via `sounddevice`.
+
+Later:
+- phone mic
+- Bluetooth earbuds mic
+- AirPods/headset input through OS APIs
+- beamformed mic array
+
+`main.py` should not know device details.
+
+### VAD
+
+```python
+has_speech(audio_bytes: bytes) -> bool
+```
+
+Current: fast byte-variance heuristic.
+
+Later:
+- WebRTC VAD
+- Silero VAD
+- native phone VAD
+
+VAD stays local and fast. Cloud VAD should not sit in real-time path.
+
+### STT
+
+```python
+transcribe_audio(audio_bytes: bytes, filename: str = "audio.webm") -> str
+```
+
+Current: Groq Whisper.
+
+Later:
+- local Whisper
+- faster-whisper
+- whisper.cpp
+- OS speech APIs when latency/privacy fit
+
+### LLM
+
+```python
+call_llm(turns: list) -> LLMResult
+```
+
+Current: Groq LLaMA with streaming, TTFT, total latency, token metrics.
+
+Later:
+- small local model
+- llama.cpp / MLX / Core ML / NNAPI
+- cloud fallback only if latency acceptable
+
+Prompt must keep:
+- truthfulness rule
+- fixed JSON schema
+- short reply rule
+- no extra fields
+
+### Display
+
+Current display is terminal. It acts like a glasses simulator:
+
+```text
+reply  ← primary, big/glanceable
+intent ← secondary, small/context
+```
+
+Later display can be:
+- glasses optical overlay
+- phone overlay
+- watch display
+- companion app UI
+
+Never display `summary`.
+
+---
+
+## Real-Time Path vs Learning Path
+
+Keep separated.
+
+```text
+REAL-TIME PATH
+Mic / earbuds
+  ↓
+VAD
+  ↓
+STT
+  ↓
+Conversation buffer
+  ↓
+LLM
+  ↓
+Display
+```
+
+```text
+LEARNING PATH (future)
+User speech + session logs
+  ↓
+Local cache after session
+  ↓
+Background cloud sync
+  ↓
+Profile learning
+  ↓
+Updated user_profile.json / device profile
+```
+
+Learning path must never block real-time conversation.
+
+Current code implements only real-time path.
+
+---
+
+## Conversation Model
+
+Current system captures only **other person**.
+
+```python
+conversation.add_other(text)
+```
+
+Reserved for future self-speech logging:
+
+```python
+conversation.add_user(text)
+```
+
+Speaker meanings:
+- `other` — person user is talking to
+- `user` — what user actually said, once Mic 2 / self-speech logging exists
+
+---
+
+## Prompt Contract
+
+System prompt lives in:
+
+```text
+backend/services/llm.py
+```
+
+Critical rule:
+
+> The reply MUST be truthful. Never invent facts about the user.
+
+Allowed output only:
+
+```json
+{ "intent": "string", "summary": "string", "reply": "string" }
+```
+
+No markdown. No code fences. No extra keys.
+
+---
+
+## User Profile
+
+Local profile file:
+
+```text
+backend/user_profile.json
+```
+
+Example:
+
+```json
+{
+  "interests": ["AI", "Programming", "Competitive Programming"],
+  "communication_style": ["logical", "concise", "truthful"]
+}
+```
+
+This profile is injected into prompt. LLM may use it only for truthful reply suggestions.
 
 ---
 
 ## Setup
 
-```bash
+Windows:
+
+```bat
 cd backend
 python -m venv venv
-venv\Scripts\activate        # Windows
+venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env         # Add GROQ_API_KEY
-python app.py                # Starts on port 5000
+copy .env.example .env
+```
+
+Edit `.env`:
+
+```env
+GROQ_API_KEY=your_groq_api_key_here
+```
+
+Run:
+
+```bat
+python main.py
+```
+
+Controls:
+
+```text
+Hold SPACE → mute while user speaks
+Q          → quit
+Ctrl+C     → quit
+```
+
+---
+
+## Config
+
+```text
+backend/config.py
+```
+
+Current config values:
+- `GROQ_API_KEY`
+- `WHISPER_MODEL`
+- `LLM_MODEL`
+- `CONVERSATION_MAX_TURNS`
+- `USER_PROFILE_PATH`
+
+Model names stay in config. Services read config. `main.py` should not hardcode models.
+
+---
+
+## Development Priorities
+
+Current priority: prepare for device deployment without overbuilding.
+
+1. Keep interfaces stable.
+2. Keep `main.py` thin.
+3. Keep real-time path isolated.
+4. Keep output glanceable.
+5. Measure latency.
+6. Replace internals only when needed.
+
+Good next steps:
+- add CLI/manual session context setter
+- improve VAD with local dependency only if false positives hurt
+- test chunk size vs latency and reply usefulness
+- add optional local STT backend behind same `transcribe_audio()` contract
+- add hardware input adapter later, not now
+
+---
+
+## Out of Scope For Now
+
+- Flask routes
+- web frontend
+- authentication
+- multi-speaker group conversation
+- automatic replies
+- translation mode
+- emotion/psychological analysis
+- cloud learning pipeline
+- long-term people profiles
+- hardware-specific SDK integration
+- mobile app scaffolding
+
+---
+
+## Current Command
+
+```bat
+cd backend
+python main.py
 ```

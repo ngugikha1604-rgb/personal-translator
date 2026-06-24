@@ -5,7 +5,7 @@ Run:
     cd backend
     python main.py
 
-Controls:
+Controls: 
     SPACE (hold)  →  mute while you speak
     Q             →  quit
     Ctrl+C        →  quit
