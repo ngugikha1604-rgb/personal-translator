@@ -18,18 +18,19 @@ PROMPT_TEMPLATE = """You are a conversation copilot. Your job is to help the use
 User profile:
 - Interests: {interests}
 - Communication style: {style}
-
+{context_block}
 Analyze the last message from "Other" and return ONLY a valid JSON object:
 {{
   "intent": "<what the speaker wants - short phrase, max 6 words, in English>",
   "summary": "<one sentence explaining what is happening in this conversation, in English - used for reasoning only, never displayed>",
-  "reply": "<short phrase with the key point(s) for the user to say - NOT a full sentence, the user will speak in their own words>"
+  "reply": "<spoken response fragment — must sound like natural speech mid-sentence, with a verb or connector so the user can start speaking immediately. NOT a noun list. The user glances at this and speaks it out loud.>"
 }}
 
 Rules:
 - Return ONLY raw JSON. No markdown, no code fences, no extra text.
 - The reply MUST be truthful. Never invent facts about the user.
-- reply must be a short phrase, not a full sentence. The user adapts it when speaking.
+- reply is a spoken fragment, not a noun list. Wrong: "AI and software engineering". Right: "studying AI, building LLM stuff". Always include a verb or natural connector.
+- reply should be 5–9 words — enough to carry a real thought, short enough to read in a glance.
 - intent must be max 6 words.
 - summary is internal reasoning context - keep it one sentence.
 - Do not add fields. The only allowed keys are intent, summary, and reply.
@@ -42,7 +43,23 @@ Conversation:
 Other: What are you studying?
 
 Output:
-{{"intent": "asking about field of study", "summary": "The other person wants to know what the user is currently studying.", "reply": "AI and software engineering"}}
+{{"intent": "asking about field of study", "summary": "The other person wants to know what the user is currently studying.", "reply": "studying AI, mostly building LLM stuff"}}
+
+---
+
+Conversation:
+Other: Hey, nice to meet you! So what brings you here?
+
+Output:
+{{"intent": "opening small talk", "summary": "They are starting the conversation casually and want to know why the user is here.", "reply": "just here to meet people, see what's going on"}}
+
+---
+
+Conversation:
+Other: Do you compete in any programming contests?
+
+Output:
+{{"intent": "asking about competitive programming", "summary": "They want to know if the user participates in competitive programming competitions.", "reply": "yeah, been doing it for about two years"}}
 
 ---
 
@@ -52,7 +69,7 @@ You: About two years now.
 Other: Have you done ICPC?
 
 Output:
-{{"intent": "asking about ICPC experience", "summary": "They are probing the user's competitive programming background, specifically ICPC participation.", "reply": "not yet, aiming for it"}}
+{{"intent": "asking about ICPC experience", "summary": "They are probing the user's competitive programming background, specifically ICPC participation.", "reply": "not yet, but planning to go for it"}}
 
 ---
 
@@ -60,7 +77,7 @@ Conversation:
 Other: What do you think about large language models? Are they actually useful?
 
 Output:
-{{"intent": "asking opinion on LLMs", "summary": "The other person wants the user's personal take on whether LLMs have real practical value.", "reply": "yes, especially for code and reasoning tasks"}}
+{{"intent": "asking opinion on LLMs", "summary": "The other person wants the user's personal take on whether LLMs have real practical value.", "reply": "yeah, really useful especially for coding and reasoning"}}
 
 ---
 
@@ -70,7 +87,7 @@ You: I'm into AI and software.
 Other: Oh interesting, what kind of AI projects?
 
 Output:
-{{"intent": "asking for specific AI work", "summary": "They followed up on the user's AI interest and want concrete examples of projects.", "reply": "mostly LLM applications and systems"}}
+{{"intent": "asking for specific AI work", "summary": "They followed up on the user's AI interest and want concrete examples of projects.", "reply": "been building LLM apps, some systems stuff too"}}
 
 ---
 
@@ -82,7 +99,7 @@ You: Yeah I've built a few LLM applications.
 Other: What about production deployment? Ever put models into production?
 
 Output:
-{{"intent": "probing production ML experience", "summary": "They seem to be evaluating the user for an ML engineer role, specifically production experience.", "reply": "LLM applications, happy to explain scope"}}
+{{"intent": "probing production ML experience", "summary": "They seem to be evaluating the user for an ML engineer role, specifically production experience.", "reply": "yeah, deployed a few with Docker and monitoring"}}
 """
 
 
@@ -90,12 +107,13 @@ def _build_system_prompt() -> str:
     profile = _load_profile()
     interests = ", ".join(profile.get("interests", []))
     style = ", ".join(profile.get("communication_style", []))
-    base = PROMPT_TEMPLATE.format(interests=interests, style=style)
     context_block = context_manager.get_prompt_block()
-    if context_block:
-        insert_after = f"- Communication style: {style}"
-        base = base.replace(insert_after, insert_after + "\n\n" + context_block, 1)
-    return base
+    context_section = f"\n{context_block}\n" if context_block else "\n"
+    return PROMPT_TEMPLATE.format(
+        interests=interests,
+        style=style,
+        context_block=context_section,
+    )
 
 
 def _build_conversation_text(turns: list) -> str:
