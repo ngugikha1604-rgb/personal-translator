@@ -103,6 +103,7 @@ class Display:
 
     def __init__(self):
         self._tokens_accumulated = 0
+        self._last_timing_ms = 0
         self._lock = threading.Lock()
         self._stream_buf = ""
         self._enable_windows_ansi()
@@ -113,7 +114,7 @@ class Display:
                 tw, th = shutil.get_terminal_size((60, 24))
             except Exception:
                 tw, th = 60, 24
-            if tw < 50 or th < 12:
+            if tw < 50:
                 self._enabled = False
 
     @staticmethod
@@ -140,22 +141,34 @@ class Display:
     @staticmethod
     def _is_real_terminal() -> bool:
         """Detect real terminal — works around MSYS2/mintty isatty() issues."""
-        if not sys.stdout.isatty():
-            # MSYS2 / Cygwin / mintty
-            if os.environ.get("MSYSTEM", ""):
-                return True
-            # Windows Terminal
-            if os.environ.get("WT_SESSION", ""):
-                return True
-            # Generic: TERM=xterm-256color etc.
-            term = os.environ.get("TERM", "")
-            if term and term != "dumb":
-                return True
-            # User override
-            if os.environ.get("FORCE_TTY", ""):
-                return True
-            return False
-        return True
+        if sys.stdout.isatty():
+            return True
+        # MSYS2 / Cygwin / mintty
+        if os.environ.get("MSYSTEM", ""):
+            return True
+        # Windows Terminal
+        if os.environ.get("WT_SESSION", ""):
+            return True
+        # VS Code integrated terminal
+        if os.environ.get("TERM_PROGRAM", ""):
+            return True
+        # Generic: TERM=xterm-256color etc.
+        term = os.environ.get("TERM", "")
+        if term and term != "dumb":
+            return True
+        # Windows native console handle (catches isatty() lying on Windows)
+        if os.name == "nt":
+            try:
+                import ctypes
+                h = ctypes.windll.kernel32.GetStdHandle(-11)
+                if h and h != -1:
+                    return True
+            except Exception:
+                pass
+        # User override
+        if os.environ.get("FORCE_TTY", ""):
+            return True
+        return False
 
     # ─── Public API ──────────────────────────────────────────────────────────
 
@@ -168,7 +181,8 @@ class Display:
 
         with self._lock:
             sys.stdout.write(_hide_cursor())
-            os.system("cls" if os.name == "nt" else "clear")
+            sys.stdout.write("\033[2J\033[H")
+            sys.stdout.flush()
             self._draw_frame()
             sys.stdout.flush()
 
@@ -215,25 +229,28 @@ class Display:
             )
             sys.stdout.flush()
 
-    def result(self, intent: str, reply: str, timing_ms: int = 0,
+    def result(self, intent: str, reply: str,
+               understanding_check: str | None = None,
+               timing_ms: int = 0,
                tokens: dict | None = None) -> None:
-        """Finalize LEFT lens: intent @ row 6 (dim), reply @ row 7 (bold green).
-
-        Rows 4-5 (transcript) are left intact — only rows 6-7 are updated.
-        """
+        """Finalize LEFT lens: check @ row 5, intent @ row 6, reply @ row 7."""
         if not self._enabled:
-            self._fallback_result(intent, reply, timing_ms, tokens)
+            self._fallback_result(intent, reply, understanding_check, timing_ms, tokens)
             return
 
         with self._lock:
             self._stream_buf = ""
             pad = " " * self.LW
-            # Only clear/update rows 6-7; rows 4-5 keep the transcript
+            # Clear rows 5-7 (understanding_check replaces transcript line 2)
+            sys.stdout.write(_pos(5, self.C_LEFT) + pad)
             sys.stdout.write(_pos(6, self.C_LEFT) + pad)
             sys.stdout.write(_pos(7, self.C_LEFT) + pad)
+            # Understanding check @ row 5 (yellow dim, only when non-null)
+            if understanding_check:
+                sys.stdout.write(_pos(5, self.C_LEFT) + f"{DIM}{YLW}⚠ {_clip(understanding_check, self.LW - 2)}{RST}")
             # Intent (dim) @ row 6
             sys.stdout.write(_pos(6, self.C_LEFT) + f"{DIM}{_clip(intent, self.LW)}{RST}")
-            # Reply (bold green) @ row 7 — finalises the streaming preview
+            # Reply (bold green) @ row 7
             sys.stdout.write(_pos(7, self.C_LEFT) + f"{BLD}{GRN}{_clip(reply, self.LW)}{RST}")
             self._write_metrics(timing_ms, tokens)
             sys.stdout.flush()
@@ -258,14 +275,20 @@ class Display:
             sys.stdout.flush()
 
     def status(self, message: str) -> None:
-        """Write to status bar (row 10)."""
+        """Write status + timing to row 10."""
         if not self._enabled:
             return
 
         with self._lock:
-            # Clear status row between borders
-            sys.stdout.write(_pos(10, 2) + " " * (self.W - 4))
-            sys.stdout.write(_pos(10, 2) + f"{DIM}· {message}{RST}")
+            # Clear inner area cols 2→W-2 (leave both ║ borders)
+            sys.stdout.write(_pos(10, 2) + " " * (self.W - 3))
+            # Status message — col 4 gives "║  · message" indent
+            sys.stdout.write(_pos(10, 4) + f"{DIM}· {message}{RST}")
+            # Timing right-aligned — ⚡ is 2 visual cols, -2 keeps 1-char buffer before ║
+            if self._last_timing_ms:
+                t = f"⚡{self._last_timing_ms}ms"
+                col = self.W - len(t) - 2
+                sys.stdout.write(_pos(10, col) + f"{DIM}{t}{RST}")
             sys.stdout.flush()
 
     def error(self, message: str) -> None:
@@ -335,33 +358,27 @@ class Display:
             sys.stdout.write(_pos(row, self.C_RIGHT) + s)
 
     def _write_metrics(self, timing_ms: int, tokens: dict | None) -> None:
-        """Append timing + token info to right side of status bar (row 10)."""
-        parts = []
-        if timing_ms:
-            parts.append(f"⚡{timing_ms}ms")
+        """Track tokens for session_summary; timing stored for status bar."""
         if tokens:
             p = tokens.get("prompt_tokens", 0)
             c = tokens.get("completion_tokens", 0)
             t = p + c or tokens.get("total_tokens", 0)
             if t:
-                parts.append(f"{t}t")
                 self._tokens_accumulated += t
-                cost = (t / 1_000_000) * 0.59
-                if cost >= 0.0001:
-                    parts.append(f"${cost:.4f}")
-
-        if parts:
-            text = " | ".join(parts)
-            col = self.W - len(text) - 1
-            sys.stdout.write(_pos(10, col) + f"{DIM}{text}{RST}")
+        if timing_ms:
+            self._last_timing_ms = timing_ms
 
     # ─── Fallback (non-TTY / narrow terminal) ────────────────────────────────
 
-    def _fallback_result(self, intent: str, reply: str, timing_ms: int,
-                         tokens: dict | None) -> None:
+    def _fallback_result(self, intent: str, reply: str,
+                         understanding_check: str | None = None,
+                         timing_ms: int = 0,
+                         tokens: dict | None = None) -> None:
         div = f"{DIM}{'─' * 50}{RST}"
         print(f"\n{div}")
         print(f"  {BLD}{GRN}{reply}{RST}")
+        if understanding_check:
+            print(f"  {DIM}{YLW}⚠ {understanding_check}{RST}")
         print(f"  {DIM}{intent}{RST}")
 
         parts = []

@@ -12,7 +12,6 @@ from typing import Callable, Optional
 from config import GROQ_API_KEY, LLM_MODEL, LLM_MAX_TOKENS, LLM_TEMPERATURE
 from services.groq_client import get_client as get_groq_client, get_user_profile
 from services.context import context_manager
-from services.state import conversation_state
 
 
 # ─── Result ───────────────────────────────────────────────────────────────────
@@ -34,9 +33,7 @@ def _build_system_prompt(template: str) -> str:
     interests = ", ".join(profile.get("interests", []))
     style = ", ".join(profile.get("communication_style", []))
     context_block = context_manager.get_prompt_block()
-    state_block = conversation_state.get_prompt_block()
-    combined = "\n".join(filter(None, [context_block, state_block]))
-    context_section = f"\n{combined}\n" if combined else "\n"
+    context_section = f"\n{context_block}\n" if context_block else "\n"
     return template.format(
         interests=interests,
         style=style,

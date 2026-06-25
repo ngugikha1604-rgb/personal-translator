@@ -13,7 +13,6 @@ from dataclasses import dataclass
 from services.analyzer import Analyzer
 from services.llm import call_verification_llm
 from services.reply_generator import ReplyGenerator
-from services.state import conversation_state
 
 
 # ─── JSON repair ──────────────────────────────────────────────────────────────
@@ -102,17 +101,16 @@ class CopilotService:
     """LLM-based conversation analysis. Input: turns list. Output: CopilotResult."""
 
     def analyze_turns(self, turns: list) -> CopilotResult:
-        """Analyze conversation → generate reply. Updates conversation state."""
+        """Analyze conversation → generate reply."""
         analysis = Analyzer().analyze(turns)
         reply    = ReplyGenerator().generate(analysis)
 
-        # Update live conversation state for the next turn
-        last_turn = turns[-1] if turns else {}
-        conversation_state.update(
-            intent=analysis.intent,
-            social_signal=analysis.social_signal,
-            turn_text=last_turn.get("text", ""),
-        )
+        # Lightweight metrics for before/after comparison
+        import sys
+        print(f"[metrics] prompt_tokens={analysis.prompt_tokens} "
+              f"llm_ms={analysis.llm_ms} "
+              f"completion_tokens={analysis.completion_tokens}",
+              file=sys.stderr)
 
         return CopilotResult(
             intent            = analysis.intent,

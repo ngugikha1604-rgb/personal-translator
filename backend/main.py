@@ -45,6 +45,7 @@ def _process_other_turn(turn_n: int, speech: SpeechResult, turns: list) -> None:
         display.result(
             result.intent,
             result.reply,
+            understanding_check=result.understanding_check,
             timing_ms=speech.stt_ms + result.llm_ms,
             tokens={
                 "total_tokens": result.total_tokens,
