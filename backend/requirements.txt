@@ -3,3 +3,4 @@ python-dotenv
 sounddevice
 numpy
 pynput
+ollama

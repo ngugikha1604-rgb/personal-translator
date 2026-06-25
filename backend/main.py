@@ -23,9 +23,9 @@ from services.copilot import copilot_service
 from services.display import display
 from services.speech import speech_service, SpeechResult, SpeechStatus
 from services.utterance_filter import classify_utterance
+from services.memory import learn_from_session
 
-DIM   = "\033[90m"
-RESET = "\033[0m"
+_session_start = None
 
 
 # ─── Startup validation ───────────────────────────────────────────────────────
@@ -36,36 +36,32 @@ def _validate() -> None:
         sys.exit(1)
 
 
-# ─── Logging ─────────────────────────────────────────────────────────────────
+# ─── Thread worker ────────────────────────────────────────────────────────────
 
-def _log_turn(
-    turn_n: int,
-    speech: SpeechResult,
-    result,
-) -> None:
-    """Structured per-turn metrics log."""
-    total_ms = speech.stt_ms + result.llm_ms
-    tokens   = (
-        f"{result.prompt_tokens}p + {result.completion_tokens}c = {result.total_tokens} tokens"
-        if result.total_tokens > 0 else "tokens: n/a (upgrade groq sdk)"
-    )
-
-    print(
-        f"\n{DIM}"
-        f"[TURN {turn_n}]\n"
-        f"  stt    {speech.stt_ms:>5}ms   \"{speech.transcript}\"\n"
-        f"  llm    {result.llm_ms:>5}ms   ttft: {result.ttft_ms}ms  |  {tokens}\n"
-        f"  total  {total_ms:>5}ms"
-        f"{RESET}"
-    )
+def _process_other_turn(turn_n: int, speech: SpeechResult, turns: list) -> None:
+    """Run LLM off capture loop so audio recording does not pause."""
+    try:
+        result = copilot_service.analyze_turns(turns)
+        display.result(
+            result.intent,
+            result.reply,
+            timing_ms=speech.stt_ms + result.llm_ms,
+            tokens={
+                "total_tokens": result.total_tokens,
+                "prompt_tokens": result.prompt_tokens,
+                "completion_tokens": result.completion_tokens,
+            },
+        )
+        display.status("listening...")
+    except Exception as e:
+        display.error(f"Analysis failed: {e}")
+        display.status("listening...")
 
 
 # ─── Keyboard (push-to-mute) ──────────────────────────────────────────────────
 
 def _setup_keyboard(muted: threading.Event) -> None:
-    """
-    Attach push-to-mute listener via pynput.
-    Silently degraded if pynput is not installed — Ctrl+C to quit instead.
+    """Attach push-to-mute listener via pynput.
 
     Device target: hardware mute button or proximity sensor on glasses frame.
     """
@@ -74,11 +70,11 @@ def _setup_keyboard(muted: threading.Event) -> None:
 
         def on_press(key):
             if key == keyboard.Key.space:
-                if not muted.is_set():          # only print on first press, not on repeat
+                if not muted.is_set():
                     display.status("muted — you're speaking")
                 muted.set()
             elif hasattr(key, "char") and key.char == "q":
-                display.status("Quit.")
+                display.session_summary(0, time.time() - (_session_start or time.time()))
                 sys.exit(0)
 
         def on_release(key):
@@ -99,6 +95,9 @@ def _setup_keyboard(muted: threading.Event) -> None:
 # ─── Main loop ────────────────────────────────────────────────────────────────
 
 def main() -> None:
+    global _session_start
+    _session_start = time.time()
+
     _validate()
     display.header()
 
@@ -108,16 +107,22 @@ def main() -> None:
     _setup_keyboard(muted)
     display.status("listening...")
 
-    # Clean shutdown on SIGTERM (e.g. systemd stop, pkill)
+    # Clean shutdown on SIGTERM
     def _handle_signal(signum, frame):
-        display.status(f"Session ended. {turn_n} turns.")
+        elapsed = time.time() - _session_start
+        display.session_summary(turn_n, elapsed)
+        threading.Thread(
+            target=learn_from_session,
+            args=(list(conversation.get_all()),),
+            daemon=True,
+        ).start()
         sys.exit(0)
     signal.signal(signal.SIGTERM, _handle_signal)
 
     try:
         while True:
             if muted.is_set():
-                # Keep chunking for speed, but defer STT/verification until SPACE release.
+                # Keep chunking for speed, defer STT/verification until release.
                 user_audio_chunks.append(record_chunk(CHUNK_SECONDS))
                 continue
 
@@ -132,7 +137,8 @@ def main() -> None:
                 if transcript:
                     conversation.add_user(transcript)
                     try:
-                        result = copilot_service.analyze_user_speech(conversation.get_all())
+                        result = copilot_service.analyze_user_speech(
+                            conversation.get_all())
                         display.verification(
                             result.understanding_correct,
                             result.warning,
@@ -147,42 +153,42 @@ def main() -> None:
             # Capture audio chunk from mic (Mic 1 — other person)
             audio_bytes = record_chunk(CHUNK_SECONDS)
 
-            # STT with VAD gate — skips silent chunks automatically
+            # STT with VAD gate
             speech = speech_service.transcribe_other_audio(audio_bytes, "chunk.wav")
             transcript = speech.transcript.strip()
 
-            # Handle status codes
             if speech.status == SpeechStatus.ERROR:
-                display.error(f"STT failed for chunk")
                 continue
             if speech.status == SpeechStatus.SKIPPED:
                 continue
 
-            # Utterance filter: classify before LLM call
+            # Utterance filter
             classification = classify_utterance(transcript)
             if classification == "noise":
                 continue
             if classification == "backchannel":
                 conversation.add_other(transcript)
-                # No LLM call — just buffer it
                 continue
 
             display.status("processing...")
             turn_n += 1
 
-            # Add transcript to conversation, run LLM analysis
             conversation.add_other(transcript)
-            try:
-                result = copilot_service.analyze_turns(conversation.get_all())
-                _log_turn(turn_n, speech, result)
-                display.result(result.intent, result.reply)
-            except Exception as e:
-                display.error(f"Analysis failed: {e}")
-
-            display.status("listening...")
+            turns = conversation.get_all()
+            threading.Thread(
+                target=_process_other_turn,
+                args=(turn_n, speech, turns),
+                daemon=True,
+            ).start()
 
     except KeyboardInterrupt:
-        display.status(f"Session ended. {turn_n} turns.")
+        elapsed = time.time() - _session_start
+        display.session_summary(turn_n, elapsed)
+        threading.Thread(
+            target=learn_from_session,
+            args=(list(conversation.get_all()),),
+            daemon=True,
+        ).start()
 
 
 if __name__ == "__main__":

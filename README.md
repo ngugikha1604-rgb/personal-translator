@@ -1,402 +1,462 @@
-# Personal Translator — Conversation Copilot
+# Personal Conversation Copilot
 
-Real-time AI copilot for live English conversations.
+Real-time AI copilot for live conversations.
 
-System listens to the other person, detects intent, and suggests a short truthful reply fragment. User still decides what to say.
+This project helps the user participate in conversations faster by understanding intent, reducing thinking latency, and suggesting truthful response directions.
 
-Not a translator. Not a chatbot. Not a voice assistant. Not an automatic responder.
+The user remains in control.
 
-Goal now: keep desktop prototype simple while shaping architecture so it can later move onto constrained hardware: phone + earbuds/AirPods-style mic input, then glasses / watch / phone overlay display.
-
----
-
-## Core Problem
-
-Live second-language conversation has latency.
-
-User must:
-
-1. Hear words
-2. Decode English
-3. Understand intent
-4. Decide response
-5. Speak naturally
-
-This project reduces steps 3–4 latency. It gives user a glanceable reply direction, not a script.
+The AI never speaks for the user.
 
 ---
 
-## Current Status
+# Vision
 
-Current code is a **desktop CLI hardware prototype**.
+Most AI conversation tools focus on:
 
-It uses:
+* translation
+* grammar correction
+* chatbot interaction
+* voice assistants
 
-| Layer | Current implementation | Future hardware target |
-|---|---|---|
-| Mic input | `sounddevice` default desktop mic | phone mic, earbuds/AirPods mic, beamformed mic array |
-| VAD | cheap byte-variance heuristic | WebRTC VAD, Silero VAD, platform VAD |
-| STT | Groq Whisper API | local Whisper, whisper.cpp, phone OS speech API |
-| LLM | Groq LLaMA 3.3 70B | quantized local model, phone NPU/Core ML/NNAPI, cloud fallback |
-| Display | terminal ANSI overlay | glasses, phone overlay, watch, companion app |
-| Memory | in-memory rolling buffer | same real-time buffer + optional background learning later |
+This project focuses on a different problem:
 
-No Flask server. No web frontend. No routes.
+Human conversation latency.
+
+The user can often understand English.
+
+The bottleneck is:
+
+1. Understanding what the other person actually means.
+2. Deciding what to say.
+3. Responding quickly.
+4. Avoiding misunderstandings.
+
+The goal of this system is to reduce that delay.
 
 ---
 
-## Runtime Flow
+# What This Project Is
 
-```text
-Mic input
-  ↓
-backend/services/audio.py
-record_chunk() returns WAV bytes
-  ↓
-backend/services/vad.py
-has_speech() skips likely silence
-  ↓
-backend/services/stt.py
-transcribe_audio() sends audio to Groq Whisper
-  ↓
-backend/services/conversation.py
-conversation.add_other() stores rolling turns
-  ↓
-backend/services/llm.py
-call_llm() sends turns + user profile to Groq LLaMA
-  ↓
-backend/services/copilot.py
-parses fixed JSON
-  ↓
-backend/services/display.py
-prints reply + intent in terminal
-```
+This project is:
 
-Output shape is fixed:
+* a Conversation Copilot
+* an Intent Understanding System
+* a Response Planning Assistant
+* a real-time conversational support tool
+
+The AI helps the user:
+
+* understand intent
+* detect misunderstandings
+* think of responses faster
+* stay engaged in conversations
+
+---
+
+# What This Project Is NOT
+
+This project is NOT:
+
+* a translator
+* a chatbot
+* an AI companion
+* an AI friend
+* a voice assistant
+* an automatic responder
+* a grammar tutor
+* a language learning application
+
+The AI should never replace the user.
+
+The AI assists the user.
+
+---
+
+# Core Success Metric
+
+The primary metric is:
+
+Conversation Latency Reduction
+
+Definition:
+
+Time between:
+
+Other person finishes speaking
+
+and
+
+User begins responding.
+
+The system succeeds if this delay becomes shorter.
+
+---
+
+# Long-Term Vision
+
+The current CLI application is only a prototype.
+
+The final target is:
+
+Microphone
+→ Streaming Speech Recognition
+→ Conversation Understanding
+→ Response Planning
+→ Wearable Display
+
+Potential hardware:
+
+* Smart Glasses
+* Earbuds
+* AirPods-style microphones
+* Phone companion
+* Smart watch
+
+The architecture should evolve toward wearable deployment.
+
+---
+
+# Product Philosophy
+
+The user should always remain the speaker.
+
+The AI should remain a copilot.
+
+The AI should:
+
+* suggest
+* guide
+* warn
+* verify
+
+The AI should never:
+
+* impersonate
+* automatically answer
+* fabricate information
+
+---
+
+# Truthfulness Rule
+
+This is the most important rule in the entire project.
+
+The AI must never invent facts about the user.
+
+Bad:
+
+"I am a machine learning engineer."
+
+when the user is not.
+
+Good:
+
+"I am interested in AI and software engineering."
+
+All suggestions must remain truthful.
+
+---
+
+# Current Capabilities
+
+The system currently focuses on:
+
+1. Intent Detection
+2. Reply Suggestion
+
+Current output:
 
 ```json
 {
-  "intent": "asking about field of study",
-  "summary": "They want to know what the user is currently studying.",
-  "reply": "studying AI, mostly building LLM stuff"
+  "intent": "...",
+  "summary": "...",
+  "reply": "..."
 }
-```
-
-Display shows only:
-
-```text
-studying AI, mostly building LLM stuff
-asking about field of study
-```
-
-`summary` is internal only.
-
----
-
-## Project Structure
-
-```text
-personal_translator/
-├── README.md
-├── AGENTS.md
-└── backend/
-    ├── main.py                  # CLI entry point and real-time loop
-    ├── config.py                # Env, model names, constants
-    ├── requirements.txt
-    ├── .env.example
-    ├── user_profile.json        # Local user facts/style injected into prompt
-    └── services/
-        ├── audio.py             # Mic capture: record_chunk() -> WAV bytes
-        ├── vad.py               # Speech gate: has_speech()
-        ├── stt.py               # Groq Whisper STT wrapper
-        ├── speech.py            # VAD + STT orchestration
-        ├── conversation.py      # Rolling in-memory buffer singleton
-        ├── context.py           # Optional session context manager
-        ├── llm.py               # Prompt + LLM call + latency metrics
-        ├── copilot.py           # JSON parse + CopilotResult
-        └── display.py           # Terminal now, glasses later
-```
-
----
-
-## Hardware-Ready Boundaries
-
-Main rule: replace internals, keep service contracts stable.
-
-### Audio
-
-```python
-record_chunk(duration: float) -> bytes
-```
-
-Current: desktop mic via `sounddevice`.
-
-Later:
-- phone mic
-- Bluetooth earbuds mic
-- AirPods/headset input through OS APIs
-- beamformed mic array
-
-`main.py` should not know device details.
-
-### VAD
-
-```python
-has_speech(audio_bytes: bytes) -> bool
-```
-
-Current: fast byte-variance heuristic.
-
-Later:
-- WebRTC VAD
-- Silero VAD
-- native phone VAD
-
-VAD stays local and fast. Cloud VAD should not sit in real-time path.
-
-### STT
-
-```python
-transcribe_audio(audio_bytes: bytes, filename: str = "audio.webm") -> str
-```
-
-Current: Groq Whisper.
-
-Later:
-- local Whisper
-- faster-whisper
-- whisper.cpp
-- OS speech APIs when latency/privacy fit
-
-### LLM
-
-```python
-call_llm(turns: list) -> LLMResult
-```
-
-Current: Groq LLaMA with streaming, TTFT, total latency, token metrics.
-
-Later:
-- small local model
-- llama.cpp / MLX / Core ML / NNAPI
-- cloud fallback only if latency acceptable
-
-Prompt must keep:
-- truthfulness rule
-- fixed JSON schema
-- short reply rule
-- no extra fields
-
-### Display
-
-Current display is terminal. It acts like a glasses simulator:
-
-```text
-reply  ← primary, big/glanceable
-intent ← secondary, small/context
-```
-
-Later display can be:
-- glasses optical overlay
-- phone overlay
-- watch display
-- companion app UI
-
-Never display `summary`.
-
----
-
-## Real-Time Path vs Learning Path
-
-Keep separated.
-
-```text
-REAL-TIME PATH
-Mic / earbuds
-  ↓
-VAD
-  ↓
-STT
-  ↓
-Conversation buffer
-  ↓
-LLM
-  ↓
-Display
-```
-
-```text
-LEARNING PATH (future)
-User speech + session logs
-  ↓
-Local cache after session
-  ↓
-Background cloud sync
-  ↓
-Profile learning
-  ↓
-Updated user_profile.json / device profile
-```
-
-Learning path must never block real-time conversation.
-
-Current code implements only real-time path.
-
----
-
-## Conversation Model
-
-Current system captures only **other person**.
-
-```python
-conversation.add_other(text)
-```
-
-Reserved for future self-speech logging:
-
-```python
-conversation.add_user(text)
-```
-
-Speaker meanings:
-- `other` — person user is talking to
-- `user` — what user actually said, once Mic 2 / self-speech logging exists
-
----
-
-## Prompt Contract
-
-System prompt lives in:
-
-```text
-backend/services/llm.py
-```
-
-Critical rule:
-
-> The reply MUST be truthful. Never invent facts about the user.
-
-Allowed output only:
-
-```json
-{ "intent": "string", "summary": "string", "reply": "string" }
-```
-
-No markdown. No code fences. No extra keys.
-
----
-
-## User Profile
-
-Local profile file:
-
-```text
-backend/user_profile.json
 ```
 
 Example:
 
 ```json
 {
-  "interests": ["AI", "Programming", "Competitive Programming"],
-  "communication_style": ["logical", "concise", "truthful"]
+  "intent": "understanding educational background",
+  "summary": "They want to know what the user studies.",
+  "reply": "studying AI and software engineering"
 }
 ```
 
-This profile is injected into prompt. LLM may use it only for truthful reply suggestions.
-
----
-
-## Setup
-
-Windows:
-
-```bat
-cd backend
-python -m venv venv
-venv\Scripts\activate
-pip install -r requirements.txt
-copy .env.example .env
-```
-
-Edit `.env`:
-
-```env
-GROQ_API_KEY=your_groq_api_key_here
-```
-
-Run:
-
-```bat
-python main.py
-```
-
-Controls:
+Display:
 
 ```text
-Hold SPACE → mute while user speaks
-Q          → quit
-Ctrl+C     → quit
+studying AI and software engineering
+understanding educational background
 ```
+
+Summary is internal only.
 
 ---
 
-## Config
+# Future Capabilities
+
+These features are planned but not yet implemented.
+
+## Understanding Check
+
+Help detect misunderstanding.
+
+Example:
+
+Speaker:
+
+"What got you interested in AI?"
+
+System:
+
+"They are asking WHY you became interested in AI, not HOW you learned AI."
+
+---
+
+## Answer Check
+
+After the user responds:
+
+Determine whether the user's answer actually addressed the question.
+
+Example:
+
+Speaker:
+
+"Why are you interested in AI?"
+
+User:
+
+"I study software engineering."
+
+System:
+
+"You answered WHAT you study, not WHY you are interested in AI."
+
+---
+
+## Social Warning
+
+Detect possible:
+
+* indirect requests
+* polite disagreement
+* social ambiguity
+* cultural nuances
+
+Warnings should be rare.
+
+Only when confidence is high.
+
+---
+
+# Engineering Philosophy
+
+This project intentionally stays simple.
+
+Do NOT add:
+
+* RAG
+* Vector Databases
+* Knowledge Graphs
+* Multi-Agent Systems
+* CrewAI
+* LangGraph
+* Authentication Systems
+* Analytics Platforms
+* Dashboard Systems
+
+unless a real bottleneck has been proven.
+
+Complexity should only be added when necessary.
+
+---
+
+# Architecture Philosophy
+
+Current implementation is a desktop prototype.
+
+Future implementation will likely involve:
+
+Streaming Audio
+→ Streaming STT
+→ Conversation State
+→ Understanding Layer
+→ Suggestion Layer
+→ Wearable Display
+
+All architectural decisions should move the codebase closer to that future.
+
+---
+
+# Latency Philosophy
+
+Latency is a first-class feature.
+
+A slightly worse answer delivered in 500ms is often more useful than a better answer delivered in 3 seconds.
+
+When making engineering decisions:
+
+Prefer:
+
+* lower latency
+* fewer network calls
+* simpler pipelines
+
+Avoid unnecessary processing.
+
+---
+
+# Streaming Philosophy
+
+Even if the current implementation is request-response based, future systems will process continuous streams.
+
+Design components so they can later support:
+
+partial transcript
+→ partial reasoning
+→ incremental updates
+
+without major rewrites.
+
+---
+
+# Hardware Independence
+
+Service contracts should remain stable.
+
+Implementations may change.
+
+Examples:
+
+STT:
+
+Today:
+
+* Groq Whisper
+
+Future:
+
+* Faster Whisper
+* Whisper.cpp
+* FunASR
+* OS speech APIs
+
+LLM:
+
+Today:
+
+* Groq LLaMA
+
+Future:
+
+* Local models
+* llama.cpp
+* MLX
+* Core ML
+* Cloud fallback
+
+Code outside service boundaries should not care which provider is used.
+
+---
+
+# Current Runtime Flow
+
+Mic Input
+↓
+Audio Service
+↓
+Voice Activity Detection
+↓
+Speech-To-Text
+↓
+Conversation Buffer
+↓
+LLM Analysis
+↓
+Display
+
+Current architecture validates the AI pipeline.
+
+It is not the final deployment architecture.
+
+---
+
+# Project Structure
 
 ```text
-backend/config.py
+personal_conversation_copilot/
+├── README.md
+├── AGENTS.md
+└── backend/
+    ├── main.py
+    ├── config.py
+    ├── user_profile.json
+    └── services/
+        ├── audio.py
+        ├── vad.py
+        ├── speech.py
+        ├── stt.py
+        ├── llm.py
+        ├── conversation.py
+        ├── context.py
+        ├── copilot.py
+        └── display.py
 ```
 
-Current config values:
-- `GROQ_API_KEY`
-- `WHISPER_MODEL`
-- `LLM_MODEL`
-- `CONVERSATION_MAX_TURNS`
-- `USER_PROFILE_PATH`
+---
 
-Model names stay in config. Services read config. `main.py` should not hardcode models.
+# Current Priorities
+
+Priority #1
+
+Reduce conversation latency.
+
+Priority #2
+
+Prepare architecture for streaming.
+
+Priority #3
+
+Keep provider boundaries clean.
+
+Priority #4
+
+Prepare for wearable deployment.
 
 ---
 
-## Development Priorities
+# Current Non-Goals
 
-Current priority: prepare for device deployment without overbuilding.
+Not currently working on:
 
-1. Keep interfaces stable.
-2. Keep `main.py` thin.
-3. Keep real-time path isolated.
-4. Keep output glanceable.
-5. Measure latency.
-6. Replace internals only when needed.
+* Mobile apps
+* Smart glasses SDK integration
+* Authentication
+* User accounts
+* Cloud memory
+* Long-term profiles
+* Group conversations
+* Automatic responses
+* Translation mode
 
-Good next steps:
-- add CLI/manual session context setter
-- improve VAD with local dependency only if false positives hurt
-- test chunk size vs latency and reply usefulness
-- add optional local STT backend behind same `transcribe_audio()` contract
-- add hardware input adapter later, not now
+These can be revisited later.
 
 ---
 
-## Out of Scope For Now
+# Guidelines For Contributors
 
-- Flask routes
-- web frontend
-- authentication
-- multi-speaker group conversation
-- automatic replies
-- translation mode
-- emotion/psychological analysis
-- cloud learning pipeline
-- long-term people profiles
-- hardware-specific SDK integration
-- mobile app scaffolding
+Before introducing any feature, ask:
 
----
+1. Does this reduce conversation latency?
+2. Does this improve streaming readiness?
+3. Will this still be useful when the UI becomes smart glasses?
 
-## Current Command
+If the answer is no, reconsider the change.
 
-```bat
-cd backend
-python main.py
-```
+The goal is not to build a better chatbot.
+
+The goal is to build a real-time Conversation Copilot.

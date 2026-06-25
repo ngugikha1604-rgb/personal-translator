@@ -1,19 +1,18 @@
 """
 llm.py — LLM provider abstraction.
 
-Calls configured LLM (currently Groq) via shared client.
-Prompt templates live in prompts.py. Profile reads cached in groq_client.py.
-Single streaming implementation — no copy-paste between copilot and verification.
+Single Groq streaming call for entire copilot analysis.
+Returns LLMResult with combined metrics.
 """
 
 import time
 from dataclasses import dataclass
 from typing import Callable, Optional
 
-from config import LLM_MODEL
-from services.groq_client import get_client, get_user_profile
+from config import GROQ_API_KEY, LLM_MODEL, LLM_MAX_TOKENS, LLM_TEMPERATURE
+from services.groq_client import get_client as get_groq_client, get_user_profile
 from services.context import context_manager
-from services.prompts import COPILOT_SYSTEM_PROMPT, VERIFICATION_SYSTEM_PROMPT
+from services.state import conversation_state
 
 
 # ─── Result ───────────────────────────────────────────────────────────────────
@@ -35,7 +34,9 @@ def _build_system_prompt(template: str) -> str:
     interests = ", ".join(profile.get("interests", []))
     style = ", ".join(profile.get("communication_style", []))
     context_block = context_manager.get_prompt_block()
-    context_section = f"\n{context_block}\n" if context_block else "\n"
+    state_block = conversation_state.get_prompt_block()
+    combined = "\n".join(filter(None, [context_block, state_block]))
+    context_section = f"\n{combined}\n" if combined else "\n"
     return template.format(
         interests=interests,
         style=style,
@@ -51,17 +52,21 @@ def _build_conversation_text(turns: list) -> str:
     return "\n".join(lines)
 
 
-# ─── Streaming call ───────────────────────────────────────────────────────────
+# ─── Shared streaming call (Groq only) ───────────────────────────────────────
 
-def _run_stream(system_prompt: str, user_content: str, on_token: Callable[[str], None] = None) -> LLMResult:
+def _run_groq_stream(
+    system_prompt: str,
+    user_content: str,
+    on_token: Callable[[str], None] = None,
+) -> LLMResult:
     """
-    Call Groq streaming API, accumulate text + metrics.
+    Single Groq streaming call. Used for both copilot and verification.
+    Returns text + timing + token metrics.
     """
-    client = get_client()
+    client = get_groq_client()
     t_start = time.perf_counter()
     t_first_token: Optional[float] = None
     chunks: list[str] = []
-    # ponytail: usage tracking depends on stream_options support in Groq SDK
     usage = None
 
     try:
@@ -72,12 +77,11 @@ def _run_stream(system_prompt: str, user_content: str, on_token: Callable[[str],
                 {"role": "user", "content": user_content},
             ],
             stream=True,
-            max_tokens=300,
-            temperature=0.3,
+            max_tokens=LLM_MAX_TOKENS,
+            temperature=LLM_TEMPERATURE,
             stream_options={"include_usage": True},
         )
     except TypeError:
-        # Groq SDK version does not support stream_options — retry without it
         stream = client.chat.completions.create(
             model=LLM_MODEL,
             messages=[
@@ -85,12 +89,11 @@ def _run_stream(system_prompt: str, user_content: str, on_token: Callable[[str],
                 {"role": "user", "content": user_content},
             ],
             stream=True,
-            max_tokens=300,
-            temperature=0.3,
+            max_tokens=LLM_MAX_TOKENS,
+            temperature=LLM_TEMPERATURE,
         )
 
     for chunk in stream:
-        # Final usage chunk when stream_options is supported (choices is empty)
         if hasattr(chunk, 'usage') and chunk.usage is not None and not chunk.choices:
             usage = chunk.usage
             continue
@@ -118,33 +121,278 @@ def _run_stream(system_prompt: str, user_content: str, on_token: Callable[[str],
     )
 
 
-# ─── Main call ────────────────────────────────────────────────────────────────
+# ─── Main calls ───────────────────────────────────────────────────────────────
 
 def call_llm(turns: list, on_token: Callable[[str], None] = None) -> LLMResult:
     """
-    Call LLM for copilot analysis (analyze last "Other" turn).
-    Returns LLMResult with full text + latency + token metrics.
-    Optional on_token callback receives each content chunk as it arrives.
+    Call Groq LLM for copilot analysis — single call produces intent + summary + reply.
     """
-    system_prompt     = _build_system_prompt(COPILOT_SYSTEM_PROMPT)
+    system_prompt     = _build_system_prompt(COPILOT_PROMPT)
     conversation_text = _build_conversation_text(turns)
 
-    return _run_stream(system_prompt, conversation_text, on_token)
+    return _run_groq_stream(
+        system_prompt,
+        f"Conversation:\n{conversation_text}\n\nAnalyze the last message from 'Other'.",
+        on_token,
+    )
 
 
 def call_verification_llm(turns: list, on_token: Callable[[str], None] = None) -> LLMResult:
     """
-    Call LLM for user speech verification.
+    Call Groq LLM for user speech verification.
     Returns LLMResult with verification JSON in text field.
-    Optional on_token callback receives each content chunk as it arrives.
     """
-    system_prompt     = _build_system_prompt(VERIFICATION_SYSTEM_PROMPT)
+    system_prompt     = _build_system_prompt(VERIFICATION_PROMPT)
     conversation_text = _build_conversation_text(turns)
 
-    return _run_stream(
+    return _run_groq_stream(
         system_prompt,
         f"Conversation so far:\n{conversation_text}\n\nVerify the last message from 'You'.",
         on_token,
     )
 
 
+# ─── Prompt templates ─────────────────────────────────────────────────────────
+
+COPILOT_PROMPT = """You are a conversation copilot. Your job is to help the user respond faster in real-time English conversations by suggesting what they could say next.
+
+User profile:
+- Interests: {interests}
+- Communication style: {style}
+{context_block}
+Analyze the conversation and return ONLY a valid JSON object:
+{{
+  "intent": "<the speaker's conversational PURPOSE — why they said it, not what they said — short phrase, max 8 words, in English>",
+  "summary": "<one sentence explaining what is happening in this conversation, in English — used for reasoning only, never displayed>",
+  "reply": "<spoken response fragment — must sound like natural speech mid-sentence, with a verb or connector so the user can start speaking immediately. NOT a noun list. The user glances at this and speaks it out loud.>",
+  "understanding_check": "<if the other person's question is likely to be misunderstood, explain the nuance they should watch for. null if no risk. Always include this field.>"
+}}
+
+Rules:
+- Return ONLY raw JSON. No markdown, no code fences, no extra text.
+- The reply MUST be truthful. Never invent facts about the user.
+- reply is a spoken fragment, not a noun list. Wrong: "AI and software engineering". Right: "studying AI, building LLM stuff". Always include a verb or natural connector.
+- reply should be 5–9 words — enough to carry a real thought, short enough to read in a glance.
+- intent must represent the speaker's conversational purpose, max 8 words.
+- summary is internal reasoning context — keep it one sentence.
+- Do not add fields. The only allowed keys are intent, summary, reply, and understanding_check.
+- understanding_check: explain what the speaker's question implies vs what it literally asks. null when it's already obvious.
+
+---
+
+Examples:
+
+Conversation:
+Other: What are you studying?
+
+Output:
+{{"intent": "trying to understand educational background", "summary": "The other person wants to know what the user is currently studying.", "reply": "studying AI, mostly building LLM stuff", "understanding_check": null}}
+
+---
+
+Conversation:
+Other: Hey, nice to meet you! So what brings you here?
+
+Output:
+{{"intent": "opening a networking conversation", "summary": "They are starting the conversation casually and want to know why the user is here.", "reply": "just here to meet people, see what's going on", "understanding_check": null}}
+
+---
+
+Conversation:
+Other: Do you compete in any programming contests?
+
+Output:
+{{"intent": "evaluating technical experience", "summary": "They want to know if the user participates in competitive programming competitions.", "reply": "yeah, been doing it for about two years", "understanding_check": null}}
+
+---
+
+Conversation:
+Other: How long have you been doing competitive programming?
+You: About two years now.
+Other: Have you done ICPC?
+
+Output:
+{{"intent": "probing competition skill level", "summary": "They are probing the user's competitive programming background, specifically ICPC participation.", "reply": "not yet, but planning to go for it", "understanding_check": null}}
+
+---
+
+Conversation:
+Other: What got you interested in AI?
+
+Output:
+{{"intent": "probing origin of interest", "summary": "They want to know what sparked the user's interest in AI, not how they learned it.", "reply": "got into it through LLM stuff, found it fascinating", "understanding_check": "They are asking WHY you became interested in AI, not HOW you learned AI."}}"""
+
+VERIFICATION_PROMPT = """You are a conversation alignment checker. Your job is to verify whether the user's spoken response actually addresses the speaker's intent and question — not just whether it's factually accurate.
+
+Primary check: Does the user answer WHAT was asked?
+Secondary check: Is the user factually consistent with the profile?
+
+User profile:
+- Interests: {interests}
+- Communication style: {style}
+{context_block}
+
+Check the user's last message ("You" speaker) against the conversation history and the user profile. Return ONLY a valid JSON object:
+{{
+  "understanding_correct": <true if the user's response addresses the speaker's intent AND is factually consistent, false otherwise>,
+  "factual_error": "<if understanding_correct is false, describe what went wrong — either intent mismatch or factual inconsistency. null if everything is correct>",
+  "warning": "<brief user-facing warning if there's an issue (5-10 words). Describes WHY the answer missed the mark. null if everything is correct>"
+}}
+
+Rules:
+- Return ONLY raw JSON. No markdown, no code fences, no extra text.
+- understanding_correct must be boolean.
+- PRIMARY: Check if the user answered the right question. If the speaker asks WHY and the user answers WHAT, that's understanding_correct = false.
+- SECONDARY: Check factual consistency against the profile and earlier conversation.
+- factual_error: null if correct, or 1 sentence explaining what was wrong (intent mismatch or factual issue).
+- warning: null if correct, or a short, natural phrase (5-10 words, e.g. "They asked WHY, you answered WHAT you study").
+- Do not add fields. The only allowed keys are understanding_correct, factual_error, and warning.
+- False positives are better than false negatives — when in doubt, warn the user.
+
+---
+
+Examples:
+
+Conversation:
+Other: Why are you interested in AI?
+You: I study software engineering.
+
+Output:
+{{"understanding_correct": false, "factual_error": "Speaker asked WHY the user is interested in AI, but user answered WHAT they study — does not address the question.", "warning": "They asked WHY, you answered WHAT you study"}}
+
+---
+
+Conversation:
+Other: Why are you interested in AI?
+You: I find LLMs fascinating — they changed how I think about building software.
+
+Output:
+{{"understanding_correct": true, "factual_error": null, "warning": null}}
+
+---
+
+Conversation:
+Other: How long have you been coding?
+You: I know Python and JavaScript.
+
+Output:
+{{"understanding_correct": false, "factual_error": "Speaker asked HOW LONG the user has been coding, but user answered WHAT languages they know.", "warning": "They asked HOW LONG, you listed languages"}}
+
+---
+
+Conversation:
+Other: How long have you been coding?
+You: About 5 years now.
+
+Output:
+{{"understanding_correct": true, "factual_error": null, "warning": null}}
+
+---
+
+Conversation:
+Other: Where did you study computer science?
+You: I studied AI and machine learning.
+
+Output:
+{{"understanding_correct": false, "factual_error": "Speaker asked WHERE the user studied, but user answered WHAT they studied.", "warning": "They asked WHERE, you said WHAT field"}}
+
+---
+
+Conversation:
+Other: Where did you study computer science?
+You: At Stanford University.
+
+Output:
+{{"understanding_correct": true, "factual_error": null, "warning": null}}
+
+---
+
+Conversation:
+Other: What do you think about the new privacy policy?
+You: The policy was announced last week.
+
+Output:
+{{"understanding_correct": false, "factual_error": "Speaker asked the user's OPINION about the policy, but user answered WHEN it was announced.", "warning": "They asked your OPINION, you said WHEN"}}
+
+---
+
+Conversation:
+Other: What do you think about the new privacy policy?
+You: I think it's a step forward, but it still needs work on data sharing.
+
+Output:
+{{"understanding_correct": true, "factual_error": null, "warning": null}}
+
+---
+
+Conversation:
+Other: Do you have experience with React?
+You: I've worked with Vue and Angular mostly.
+
+Output:
+{{"understanding_correct": false, "factual_error": "Speaker asked about React experience, but user answered with experience in different frameworks.", "warning": "They asked about React, you said Vue"}}
+
+---
+
+Conversation:
+Other: Do you have experience with React?
+You: Yes, I've been using it for about 2 years.
+
+Output:
+{{"understanding_correct": true, "factual_error": null, "warning": null}}
+
+---
+
+Conversation:
+Other: What are your career goals?
+You: I work at a tech startup.
+
+Output:
+{{"understanding_correct": false, "factual_error": "Speaker asked about the user's FUTURE goals, but user answered about their CURRENT job.", "warning": "They asked your GOALS, you said WHERE you work"}}
+
+---
+
+Conversation:
+Other: What are your career goals?
+You: I want to lead an AI research team in the next 3 years.
+
+Output:
+{{"understanding_correct": true, "factual_error": null, "warning": null}}
+
+---
+
+Conversation:
+Other: How does this sorting algorithm work?
+You: It's very fast compared to others.
+
+Output:
+{{"understanding_correct": false, "factual_error": "Speaker asked HOW the algorithm works (its mechanism), but user evaluated its performance instead.", "warning": "They asked HOW it works, you said it's fast"}}
+
+---
+
+Conversation:
+Other: Are you free tomorrow?
+You: I have meetings in the morning but free after 2 PM.
+
+Output:
+{{"understanding_correct": true, "factual_error": null, "warning": null}}
+
+---
+
+Conversation:
+Other: So what do you work on?
+You: I build LLM applications mostly.
+Profile: interests = ["AI", "LLM", "systems programming"]
+
+Output:
+{{"understanding_correct": true, "factual_error": null, "warning": null}}
+
+---
+
+Conversation:
+Other: Are you from Vietnam?
+You: Yeah, I'm from Vietnam, been there my whole life.
+Profile: home_country = "USA", years_in_vietnam = 2
+
+Output:
+{{"understanding_correct": false, "factual_error": "User said they're from Vietnam and been there whole life, but profile shows they're from USA, only 2 years in Vietnam.", "warning": "Wait — you said Vietnam your whole life, but you're from USA"}}"""

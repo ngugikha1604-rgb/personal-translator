@@ -1,5 +1,5 @@
 class ContextManager:
-    """Holds session-level context. Resets on POST /clear."""
+    """Holds session-level context. Reset on new session. """
 
     VALID_MEETING_TYPES = {"casual", "networking", "interview", "academic"}
     VALID_LANGUAGE_LEVELS = {"native", "fluent", "intermediate"}
