@@ -22,11 +22,8 @@ from services.llm import (
 class AnalysisResult:
     """Structured analysis of a conversation turn."""
     intent: str
-    conversation_goal: str
-    question_type: str
     social_signal: str
     understanding_check: str | None
-    summary: str
     raw: str
     llm_ms: int = 0
     ttft_ms: int = 0
@@ -97,11 +94,8 @@ User profile:
 Analyze the conversation and return ONLY a valid JSON object:
 {{
   "intent": "<the speaker's conversational PURPOSE — why they said it, not what they said — short phrase, max 8 words, in English>",
-  "conversation_goal": "<what this line of questioning or statement aims to achieve in the broader conversation, e.g. assessing technical fit, building rapport, gathering background info>",
-  "question_type": "<open-ended | yes/no | clarification | opinion-seeking | probing | suggestion | statement | backchannel>",
   "social_signal": "<the social tone: casual | formal | curious | skeptical | appreciative | probing | concerned | enthusiastic | neutral>",
   "understanding_check": "<if the speaker's question is likely to be misunderstood, explain the nuance they should watch for. null if no risk.>",
-  "summary": "<one sentence explaining what is happening in this conversation, in English — used for reasoning only, never displayed>",
   "reply": "<spoken response fragment — must sound like natural speech mid-sentence, with a verb or connector so the user can start speaking immediately. NOT a noun list. The user glances at this and speaks it out loud.>"
 }}
 
@@ -111,12 +105,9 @@ Rules:
 - reply is a spoken fragment, not a noun list. Wrong: "AI and software engineering". Right: "studying AI, building LLM stuff". Always include a verb or natural connector.
 - reply should be 5–9 words — enough to carry a real thought, short enough to read in a glance.
 - intent must represent the speaker's conversational purpose, max 8 words.
-- conversation_goal: what the exchange aims to achieve (e.g. "assessing technical fit", "building rapport", "gathering background info").
-- question_type: classify the type of question or statement (e.g. open-ended, yes/no, clarification, probing).
 - social_signal: detect the speaker's social/emotional tone (e.g. casual, curious, skeptical, probing).
 - understanding_check: explain nuance when the question could be misinterpreted. null when the meaning is obvious.
-- summary is internal reasoning context — keep it one sentence.
-- Do not add fields. The only allowed keys are intent, conversation_goal, question_type, social_signal, understanding_check, summary, and reply.
+- Do not add fields. The only allowed keys are intent, social_signal, understanding_check, and reply.
 
 ---
 
@@ -126,7 +117,7 @@ Conversation:
 Other: What are you studying?
 
 Output:
-{{"intent": "trying to understand educational background", "conversation_goal": "gathering background info about the user", "question_type": "open-ended", "social_signal": "curious", "understanding_check": null, "summary": "The other person wants to know what the user is currently studying.", "reply": "studying AI, mostly building LLM stuff"}}
+{{"intent": "trying to understand educational background", "social_signal": "curious", "understanding_check": null, "reply": "studying AI, mostly building LLM stuff"}}
 
 ---
 
@@ -134,7 +125,7 @@ Conversation:
 Other: Hey, nice to meet you! So what brings you here?
 
 Output:
-{{"intent": "opening a networking conversation", "conversation_goal": "building rapport and finding common ground", "question_type": "open-ended", "social_signal": "friendly", "understanding_check": null, "summary": "They are starting the conversation casually and want to know why the user is here.", "reply": "just here to meet people, see what's going on"}}
+{{"intent": "opening a networking conversation", "social_signal": "friendly", "understanding_check": null, "reply": "just here to meet people, see what's going on"}}
 
 ---
 
@@ -142,7 +133,7 @@ Conversation:
 Other: Do you compete in any programming contests?
 
 Output:
-{{"intent": "evaluating technical experience", "conversation_goal": "assessing the user's technical depth", "question_type": "yes/no", "social_signal": "probing", "understanding_check": null, "summary": "They want to know if the user participates in competitive programming competitions.", "reply": "yeah, been doing it for about two years"}}
+{{"intent": "evaluating technical experience", "social_signal": "probing", "understanding_check": null, "reply": "yeah, been doing it for about two years"}}
 
 ---
 
@@ -152,7 +143,7 @@ You: About two years now.
 Other: Have you done ICPC?
 
 Output:
-{{"intent": "probing competition skill level", "conversation_goal": "benchmarking user against a known competition", "question_type": "yes/no", "social_signal": "probing", "understanding_check": null, "summary": "They are probing the user's competitive programming background, specifically ICPC participation.", "reply": "not yet, but planning to go for it"}}
+{{"intent": "probing competition skill level", "social_signal": "probing", "understanding_check": null, "reply": "not yet, but planning to go for it"}}
 
 ---
 
@@ -160,7 +151,7 @@ Conversation:
 Other: What got you interested in AI?
 
 Output:
-{{"intent": "probing origin of interest", "conversation_goal": "understanding the user's motivation and background", "question_type": "open-ended", "social_signal": "curious", "understanding_check": "They are asking WHY you became interested in AI, not HOW you learned AI.", "summary": "They want to know what sparked the user's interest in AI, not how they learned it.", "reply": "got into it through LLM stuff, found it fascinating"}}"""
+{{"intent": "probing origin of interest", "social_signal": "curious", "understanding_check": "They are asking WHY you became interested in AI, not HOW you learned AI.", "reply": "got into it through LLM stuff, found it fascinating"}}"""
 
 
 # ─── Service ──────────────────────────────────────────────────────────────────
@@ -186,11 +177,8 @@ class Analyzer:
 
         return AnalysisResult(
             intent              = str(parsed.get("intent", "")).strip(),
-            conversation_goal   = str(parsed.get("conversation_goal", "")).strip(),
-            question_type       = str(parsed.get("question_type", "")).strip(),
             social_signal       = str(parsed.get("social_signal", "")).strip(),
             understanding_check = parsed.get("understanding_check") or None,
-            summary             = str(parsed.get("summary", "")).strip(),
             raw                 = llm.text,
             _parsed             = parsed,
             llm_ms              = llm.total_ms,

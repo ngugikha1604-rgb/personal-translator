@@ -70,7 +70,6 @@ def _safe_parse_json(raw: str) -> dict | None:
 @dataclass(frozen=True)
 class CopilotResult:
     intent:              str
-    summary:             str   # internal only — never displayed
     reply:               str
     raw:                 str
     llm_ms:              int
@@ -111,14 +110,12 @@ class CopilotService:
         last_turn = turns[-1] if turns else {}
         conversation_state.update(
             intent=analysis.intent,
-            conversation_goal=analysis.conversation_goal,
             social_signal=analysis.social_signal,
             turn_text=last_turn.get("text", ""),
         )
 
         return CopilotResult(
             intent            = analysis.intent,
-            summary           = analysis.summary,
             reply             = reply,
             understanding_check = analysis.understanding_check,
             raw               = analysis.raw,

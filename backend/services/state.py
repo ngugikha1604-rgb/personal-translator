@@ -26,8 +26,7 @@ class ConversationState:
     social_context: Optional[str] = None       # Social tone (casual, probing, etc.)
     turn_count: int = 0                        # Total turns analyzed
 
-    def update(self, intent: str, conversation_goal: str,
-               social_signal: str, turn_text: str) -> None:
+    def update(self, intent: str, social_signal: str, turn_text: str) -> None:
         """Update state from one analyzed turn.
 
         Called after each Analyzer.analyze().
@@ -41,10 +40,8 @@ class ConversationState:
         if social_signal:
             self.social_context = social_signal
 
-        # Topic: prefer conversation_goal (richer), fall back to intent
-        if conversation_goal:
-            self.current_topic = conversation_goal
-        elif intent:
+        # Topic from intent
+        if intent:
             self.current_topic = intent
 
         # Track the most recent question from the turn text
