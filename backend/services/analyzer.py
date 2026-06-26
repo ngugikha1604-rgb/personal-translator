@@ -149,12 +149,14 @@ Output:
 class Analyzer:
     """Conversation analyzer. Produces structured analysis from conversation turns."""
 
-    def analyze(self, turns: list, prompt_template: str = None) -> AnalysisResult:
+    def analyze(self, turns: list, prompt_template: str = None,
+                model_override: str = None) -> AnalysisResult:
         """Single LLM call → structured analysis with all intent/context fields + embedded reply.
         
         Args:
             turns: conversation history list
             prompt_template: override ANALYZER_PROMPT (for benchmarking). Defaults to module-level.
+            model_override: override LLM model name (for model comparison). Defaults to config.
         """
         template = prompt_template if prompt_template else ANALYZER_PROMPT
         system_prompt     = _build_system_prompt(template)
@@ -163,6 +165,7 @@ class Analyzer:
         llm = _run_groq_stream(
             system_prompt,
             f"Conversation:\n{conversation_text}\n\nAnalyze the last message from 'Other'.",
+            model=model_override,
         )
 
         parsed = _safe_parse_json(llm.text)

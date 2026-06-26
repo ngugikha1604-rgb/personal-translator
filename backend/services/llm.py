@@ -55,12 +55,17 @@ def _run_groq_stream(
     system_prompt: str,
     user_content: str,
     on_token: Callable[[str], None] = None,
+    model: str = None,
 ) -> LLMResult:
     """
     Single Groq streaming call. Used for both copilot and verification.
     Returns text + timing + token metrics.
+
+    Args:
+        model: override model name. Defaults to config.LLM_MODEL.
     """
     client = get_groq_client()
+    effective_model = model or LLM_MODEL
     t_start = time.perf_counter()
     t_first_token: Optional[float] = None
     chunks: list[str] = []
@@ -68,7 +73,7 @@ def _run_groq_stream(
 
     try:
         stream = client.chat.completions.create(
-            model=LLM_MODEL,
+            model=effective_model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_content},
@@ -80,7 +85,7 @@ def _run_groq_stream(
         )
     except TypeError:
         stream = client.chat.completions.create(
-            model=LLM_MODEL,
+            model=effective_model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_content},
