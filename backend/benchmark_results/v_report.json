@@ -1,0 +1,38 @@
+{
+  "pipeline": "verification",
+  "total_turns": 240,
+  "total_parsed_both": 0,
+  "baseline": {
+    "path": "benchmark_results/v_baseline/verification_baseline.jsonl",
+    "turns": 240,
+    "parse_ok": 0,
+    "latency_ms": {
+      "mean": 0,
+      "median": 0,
+      "p50": 0,
+      "p95": 0,
+      "p99": 0,
+      "count": 0
+    }
+  },
+  "candidate": {
+    "path": "benchmark_results/v_minimal/verification_minimal.jsonl",
+    "turns": 240,
+    "parse_ok": 0,
+    "latency_ms": {
+      "mean": 0,
+      "median": 0,
+      "p50": 0,
+      "p95": 0,
+      "p99": 0,
+      "count": 0
+    }
+  },
+  "understanding_correct": {
+    "identical": 0,
+    "mismatches": 0,
+    "match_rate_pct": 0
+  },
+  "mismatch_details": [],
+  "human_review_required": 0
+}

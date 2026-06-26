@@ -149,9 +149,15 @@ Output:
 class Analyzer:
     """Conversation analyzer. Produces structured analysis from conversation turns."""
 
-    def analyze(self, turns: list) -> AnalysisResult:
-        """Single LLM call → structured analysis with all intent/context fields + embedded reply."""
-        system_prompt     = _build_system_prompt(ANALYZER_PROMPT)
+    def analyze(self, turns: list, prompt_template: str = None) -> AnalysisResult:
+        """Single LLM call → structured analysis with all intent/context fields + embedded reply.
+        
+        Args:
+            turns: conversation history list
+            prompt_template: override ANALYZER_PROMPT (for benchmarking). Defaults to module-level.
+        """
+        template = prompt_template if prompt_template else ANALYZER_PROMPT
+        system_prompt     = _build_system_prompt(template)
         conversation_text = _build_conversation_text(turns)
 
         llm = _run_groq_stream(
