@@ -1,0 +1,507 @@
+{
+  "model_a": "llama-3.3-70b-versatile",
+  "model_b": "llama-3.1-8b-instant",
+  "samples": {
+    "model_a": 13,
+    "model_b": 56
+  },
+  "latency": {
+    "model_a": {
+      "ttft_ms": {
+        "mean": 445.4,
+        "median": 390,
+        "p95": 1152,
+        "p99": 1152,
+        "min": 276,
+        "max": 1152
+      },
+      "total_ms": {
+        "mean": 607.7,
+        "median": 497,
+        "p95": 1807,
+        "p99": 1807,
+        "min": 377,
+        "max": 1807
+      }
+    },
+    "model_b": {
+      "ttft_ms": {
+        "mean": 5947.2,
+        "median": 6674.5,
+        "p95": 7823,
+        "p99": 7923,
+        "min": 284,
+        "max": 7923
+      },
+      "total_ms": {
+        "mean": 6029.1,
+        "median": 6752.0,
+        "p95": 7936,
+        "p99": 8053,
+        "min": 368,
+        "max": 8053
+      }
+    },
+    "latency_improvement_pct": -1235.3
+  },
+  "parse_success_rate": {
+    "model_a": 23.2,
+    "model_b": 100.0
+  },
+  "fields": {
+    "intent": {
+      "identical": 1,
+      "mismatches": 12,
+      "match_rate_pct": 7.7,
+      "total_compared": 13,
+      "degraded_examples": [
+        {
+          "conversation_id": "B0",
+          "turn_index": 2,
+          "turn_text": "That's interesting. What's the most complex system you've designed?",
+          "baseline": "assessing technical expertise",
+          "candidate": "evaluating technical experience"
+        },
+        {
+          "conversation_id": "A5",
+          "turn_index": 2,
+          "turn_text": "Interesting, must be a competitive space.",
+          "baseline": "expressing skepticism",
+          "candidate": "evaluating market competitiveness"
+        },
+        {
+          "conversation_id": "B4",
+          "turn_index": 0,
+          "turn_text": "Why do you want to leave your current position?",
+          "baseline": "understanding job change motivation",
+          "candidate": "evaluating motivations for career change"
+        },
+        {
+          "conversation_id": "B14",
+          "turn_index": 1,
+          "turn_text": "Can you give me an actual example of feedback you've given recently?",
+          "baseline": "requesting concrete evidence",
+          "candidate": "requesting specific example for learning"
+        },
+        {
+          "conversation_id": "B0",
+          "turn_index": 1,
+          "turn_text": "What drew you to machine learning specifically?",
+          "baseline": "understanding career motivation",
+          "candidate": "probing origin of interest"
+        },
+        {
+          "conversation_id": "B2",
+          "turn_index": 1,
+          "turn_text": "What happened? Did they go with microservices anyway?",
+          "baseline": "seeking outcome of disagreement",
+          "candidate": "seeking a specific anecdote"
+        },
+        {
+          "conversation_id": "A5",
+          "turn_index": 1,
+          "turn_text": "How do you guys make money from that?",
+          "baseline": "inquiring business model",
+          "candidate": "evaluating business model"
+        },
+        {
+          "conversation_id": "B14",
+          "turn_index": 0,
+          "turn_text": "How do you give constructive feedback to a junior engineer who's struggling?",
+          "baseline": "seeking advice on mentoring",
+          "candidate": "seeking advice on effective communication"
+        },
+        {
+          "conversation_id": "B2",
+          "turn_index": 0,
+          "turn_text": "Tell me about a time you disagreed with a technical decision.",
+          "baseline": "evaluating conflict resolution",
+          "candidate": "seeking a technical conflict story"
+        },
+        {
+          "conversation_id": "B0",
+          "turn_index": 0,
+          "turn_text": "So tell me a bit about yourself and your background.",
+          "baseline": "getting to know personally",
+          "candidate": "requesting personal info"
+        }
+      ]
+    },
+    "social_signal": {
+      "identical": 7,
+      "mismatches": 6,
+      "match_rate_pct": 53.8,
+      "total_compared": 13,
+      "degraded_examples": [
+        {
+          "conversation_id": "B2",
+          "turn_index": 2,
+          "turn_text": "Looking back, do you think you were right, or was the migration the right call?",
+          "baseline": "probing",
+          "candidate": "skeptical"
+        },
+        {
+          "conversation_id": "B14",
+          "turn_index": 1,
+          "turn_text": "Can you give me an actual example of feedback you've given recently?",
+          "baseline": "probing",
+          "candidate": "skeptical"
+        },
+        {
+          "conversation_id": "A5",
+          "turn_index": 1,
+          "turn_text": "How do you guys make money from that?",
+          "baseline": "curious",
+          "candidate": "probing"
+        },
+        {
+          "conversation_id": "B14",
+          "turn_index": 0,
+          "turn_text": "How do you give constructive feedback to a junior engineer who's struggling?",
+          "baseline": "curious",
+          "candidate": "appreciative"
+        },
+        {
+          "conversation_id": "B2",
+          "turn_index": 0,
+          "turn_text": "Tell me about a time you disagreed with a technical decision.",
+          "baseline": "probing",
+          "candidate": "curious"
+        },
+        {
+          "conversation_id": "B0",
+          "turn_index": 0,
+          "turn_text": "So tell me a bit about yourself and your background.",
+          "baseline": "curious",
+          "candidate": "friendly"
+        }
+      ]
+    },
+    "understanding_check": {
+      "identical": 9,
+      "mismatches": 4,
+      "match_rate_pct": 69.2,
+      "total_compared": 13,
+      "degraded_examples": [
+        {
+          "conversation_id": "B2",
+          "turn_index": 2,
+          "turn_text": "Looking back, do you think you were right, or was the migration the right call?",
+          "baseline": "None",
+          "candidate": "They are asking for your opinion on a past decision, not seeking a justification for the final outcome."
+        },
+        {
+          "conversation_id": "B4",
+          "turn_index": 0,
+          "turn_text": "Why do you want to leave your current position?",
+          "baseline": "None",
+          "candidate": "They are asking WHY you want to leave, not WHAT you'll do next."
+        },
+        {
+          "conversation_id": "B0",
+          "turn_index": 1,
+          "turn_text": "What drew you to machine learning specifically?",
+          "baseline": "They are asking about the motivation behind choosing ML, not the skills or knowledge required for it.",
+          "candidate": "They are asking WHY you became interested in machine learning, not HOW you learned machine learning."
+        },
+        {
+          "conversation_id": "B2",
+          "turn_index": 0,
+          "turn_text": "Tell me about a time you disagreed with a technical decision.",
+          "baseline": "They are looking for a specific past experience, not a general opinion on technical decisions.",
+          "candidate": "None"
+        }
+      ]
+    },
+    "reply": {
+      "identical": 0,
+      "mismatches": 13,
+      "match_rate_pct": 0.0,
+      "total_compared": 13,
+      "degraded_examples": [
+        {
+          "conversation_id": "B0",
+          "turn_index": 2,
+          "turn_text": "That's interesting. What's the most complex system you've designed?",
+          "baseline": "worked on a few large scale recommender systems",
+          "candidate": "worked on a few large-scale recommender systems"
+        },
+        {
+          "conversation_id": "B2",
+          "turn_index": 2,
+          "turn_text": "Looking back, do you think you were right, or was the migration the right call?",
+          "baseline": "thinking it was a good compromise actually",
+          "candidate": "think I was right, but it's hard to say for sure now"
+        },
+        {
+          "conversation_id": "A5",
+          "turn_index": 2,
+          "turn_text": "Interesting, must be a competitive space.",
+          "baseline": "yeah, it's pretty competitive, but",
+          "candidate": "yeah, it's a tough space, lots of players"
+        },
+        {
+          "conversation_id": "B4",
+          "turn_index": 0,
+          "turn_text": "Why do you want to leave your current position?",
+          "baseline": "looking for new challenges, mostly",
+          "candidate": "looking for new challenges, want to grow professionally"
+        },
+        {
+          "conversation_id": "B14",
+          "turn_index": 1,
+          "turn_text": "Can you give me an actual example of feedback you've given recently?",
+          "baseline": "like last week, I was working with someone",
+          "candidate": "let me think for a sec, I gave some feedback last week"
+        },
+        {
+          "conversation_id": "B0",
+          "turn_index": 1,
+          "turn_text": "What drew you to machine learning specifically?",
+          "baseline": "was really interested in predictive modeling",
+          "candidate": "got into it through various projects, found it really useful"
+        },
+        {
+          "conversation_id": "B2",
+          "turn_index": 1,
+          "turn_text": "What happened? Did they go with microservices anyway?",
+          "baseline": "yeah, they decided to go ahead with it",
+          "candidate": "so they actually went ahead with the migration anyway"
+        },
+        {
+          "conversation_id": "A5",
+          "turn_index": 1,
+          "turn_text": "How do you guys make money from that?",
+          "baseline": "we charge subscription fees, mainly",
+          "candidate": "we offer subscriptions for our AI tools"
+        },
+        {
+          "conversation_id": "B14",
+          "turn_index": 0,
+          "turn_text": "How do you give constructive feedback to a junior engineer who's struggling?",
+          "baseline": "usually by focusing on specific code issues",
+          "candidate": "focus on specific behaviors, not personality, when giving feedback"
+        },
+        {
+          "conversation_id": "B2",
+          "turn_index": 0,
+          "turn_text": "Tell me about a time you disagreed with a technical decision.",
+          "baseline": "had a situation where I disagreed with an architecture choice",
+          "candidate": "had a disagreement with a team about data structure choice"
+        }
+      ]
+    }
+  },
+  "degraded_examples": [
+    {
+      "conversation_id": "B0",
+      "turn_index": 2,
+      "turn_text": "That's interesting. What's the most complex system you've designed?",
+      "baseline": "assessing technical expertise",
+      "candidate": "evaluating technical experience"
+    },
+    {
+      "conversation_id": "A5",
+      "turn_index": 2,
+      "turn_text": "Interesting, must be a competitive space.",
+      "baseline": "expressing skepticism",
+      "candidate": "evaluating market competitiveness"
+    },
+    {
+      "conversation_id": "B4",
+      "turn_index": 0,
+      "turn_text": "Why do you want to leave your current position?",
+      "baseline": "understanding job change motivation",
+      "candidate": "evaluating motivations for career change"
+    },
+    {
+      "conversation_id": "B14",
+      "turn_index": 1,
+      "turn_text": "Can you give me an actual example of feedback you've given recently?",
+      "baseline": "requesting concrete evidence",
+      "candidate": "requesting specific example for learning"
+    },
+    {
+      "conversation_id": "B0",
+      "turn_index": 1,
+      "turn_text": "What drew you to machine learning specifically?",
+      "baseline": "understanding career motivation",
+      "candidate": "probing origin of interest"
+    },
+    {
+      "conversation_id": "B2",
+      "turn_index": 1,
+      "turn_text": "What happened? Did they go with microservices anyway?",
+      "baseline": "seeking outcome of disagreement",
+      "candidate": "seeking a specific anecdote"
+    },
+    {
+      "conversation_id": "A5",
+      "turn_index": 1,
+      "turn_text": "How do you guys make money from that?",
+      "baseline": "inquiring business model",
+      "candidate": "evaluating business model"
+    },
+    {
+      "conversation_id": "B14",
+      "turn_index": 0,
+      "turn_text": "How do you give constructive feedback to a junior engineer who's struggling?",
+      "baseline": "seeking advice on mentoring",
+      "candidate": "seeking advice on effective communication"
+    },
+    {
+      "conversation_id": "B2",
+      "turn_index": 0,
+      "turn_text": "Tell me about a time you disagreed with a technical decision.",
+      "baseline": "evaluating conflict resolution",
+      "candidate": "seeking a technical conflict story"
+    },
+    {
+      "conversation_id": "B0",
+      "turn_index": 0,
+      "turn_text": "So tell me a bit about yourself and your background.",
+      "baseline": "getting to know personally",
+      "candidate": "requesting personal info"
+    },
+    {
+      "conversation_id": "B2",
+      "turn_index": 2,
+      "turn_text": "Looking back, do you think you were right, or was the migration the right call?",
+      "baseline": "probing",
+      "candidate": "skeptical"
+    },
+    {
+      "conversation_id": "B14",
+      "turn_index": 1,
+      "turn_text": "Can you give me an actual example of feedback you've given recently?",
+      "baseline": "probing",
+      "candidate": "skeptical"
+    },
+    {
+      "conversation_id": "A5",
+      "turn_index": 1,
+      "turn_text": "How do you guys make money from that?",
+      "baseline": "curious",
+      "candidate": "probing"
+    },
+    {
+      "conversation_id": "B14",
+      "turn_index": 0,
+      "turn_text": "How do you give constructive feedback to a junior engineer who's struggling?",
+      "baseline": "curious",
+      "candidate": "appreciative"
+    },
+    {
+      "conversation_id": "B2",
+      "turn_index": 0,
+      "turn_text": "Tell me about a time you disagreed with a technical decision.",
+      "baseline": "probing",
+      "candidate": "curious"
+    },
+    {
+      "conversation_id": "B0",
+      "turn_index": 0,
+      "turn_text": "So tell me a bit about yourself and your background.",
+      "baseline": "curious",
+      "candidate": "friendly"
+    },
+    {
+      "conversation_id": "B2",
+      "turn_index": 2,
+      "turn_text": "Looking back, do you think you were right, or was the migration the right call?",
+      "baseline": "None",
+      "candidate": "They are asking for your opinion on a past decision, not seeking a justification for the final outcome."
+    },
+    {
+      "conversation_id": "B4",
+      "turn_index": 0,
+      "turn_text": "Why do you want to leave your current position?",
+      "baseline": "None",
+      "candidate": "They are asking WHY you want to leave, not WHAT you'll do next."
+    },
+    {
+      "conversation_id": "B0",
+      "turn_index": 1,
+      "turn_text": "What drew you to machine learning specifically?",
+      "baseline": "They are asking about the motivation behind choosing ML, not the skills or knowledge required for it.",
+      "candidate": "They are asking WHY you became interested in machine learning, not HOW you learned machine learning."
+    },
+    {
+      "conversation_id": "B2",
+      "turn_index": 0,
+      "turn_text": "Tell me about a time you disagreed with a technical decision.",
+      "baseline": "They are looking for a specific past experience, not a general opinion on technical decisions.",
+      "candidate": "None"
+    },
+    {
+      "conversation_id": "B0",
+      "turn_index": 2,
+      "turn_text": "That's interesting. What's the most complex system you've designed?",
+      "baseline": "worked on a few large scale recommender systems",
+      "candidate": "worked on a few large-scale recommender systems"
+    },
+    {
+      "conversation_id": "B2",
+      "turn_index": 2,
+      "turn_text": "Looking back, do you think you were right, or was the migration the right call?",
+      "baseline": "thinking it was a good compromise actually",
+      "candidate": "think I was right, but it's hard to say for sure now"
+    },
+    {
+      "conversation_id": "A5",
+      "turn_index": 2,
+      "turn_text": "Interesting, must be a competitive space.",
+      "baseline": "yeah, it's pretty competitive, but",
+      "candidate": "yeah, it's a tough space, lots of players"
+    },
+    {
+      "conversation_id": "B4",
+      "turn_index": 0,
+      "turn_text": "Why do you want to leave your current position?",
+      "baseline": "looking for new challenges, mostly",
+      "candidate": "looking for new challenges, want to grow professionally"
+    },
+    {
+      "conversation_id": "B14",
+      "turn_index": 1,
+      "turn_text": "Can you give me an actual example of feedback you've given recently?",
+      "baseline": "like last week, I was working with someone",
+      "candidate": "let me think for a sec, I gave some feedback last week"
+    },
+    {
+      "conversation_id": "B0",
+      "turn_index": 1,
+      "turn_text": "What drew you to machine learning specifically?",
+      "baseline": "was really interested in predictive modeling",
+      "candidate": "got into it through various projects, found it really useful"
+    },
+    {
+      "conversation_id": "B2",
+      "turn_index": 1,
+      "turn_text": "What happened? Did they go with microservices anyway?",
+      "baseline": "yeah, they decided to go ahead with it",
+      "candidate": "so they actually went ahead with the migration anyway"
+    },
+    {
+      "conversation_id": "A5",
+      "turn_index": 1,
+      "turn_text": "How do you guys make money from that?",
+      "baseline": "we charge subscription fees, mainly",
+      "candidate": "we offer subscriptions for our AI tools"
+    },
+    {
+      "conversation_id": "B14",
+      "turn_index": 0,
+      "turn_text": "How do you give constructive feedback to a junior engineer who's struggling?",
+      "baseline": "usually by focusing on specific code issues",
+      "candidate": "focus on specific behaviors, not personality, when giving feedback"
+    },
+    {
+      "conversation_id": "B2",
+      "turn_index": 0,
+      "turn_text": "Tell me about a time you disagreed with a technical decision.",
+      "baseline": "had a situation where I disagreed with an architecture choice",
+      "candidate": "had a disagreement with a team about data structure choice"
+    }
+  ]
+}

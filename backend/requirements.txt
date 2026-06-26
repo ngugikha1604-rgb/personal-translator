@@ -4,3 +4,4 @@ sounddevice
 numpy
 pynput
 ollama
+faster-whisper
