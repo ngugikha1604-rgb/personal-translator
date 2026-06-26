@@ -104,7 +104,7 @@ Rules:
 - The reply MUST be truthful. Never invent facts about the user.
 - reply is a spoken fragment, not a noun list. Wrong: "AI and software engineering". Right: "studying AI, building LLM stuff". Always include a verb or natural connector.
 - reply should be 5–9 words — enough to carry a real thought, short enough to read in a glance.
-- intent must represent the speaker's conversational purpose, max 8 words.
+- intent must represent the speaker's conversational purpose.
 - social_signal: detect the speaker's social/emotional tone (e.g. casual, curious, skeptical, probing).
 - understanding_check: explain nuance when the question could be misinterpreted. null when the meaning is obvious.
 - Do not add fields. The only allowed keys are intent, social_signal, understanding_check, and reply.
@@ -134,16 +134,6 @@ Other: Do you compete in any programming contests?
 
 Output:
 {{"intent": "evaluating technical experience", "social_signal": "probing", "understanding_check": null, "reply": "yeah, been doing it for about two years"}}
-
----
-
-Conversation:
-Other: How long have you been doing competitive programming?
-You: About two years now.
-Other: Have you done ICPC?
-
-Output:
-{{"intent": "probing competition skill level", "social_signal": "probing", "understanding_check": null, "reply": "not yet, but planning to go for it"}}
 
 ---
 

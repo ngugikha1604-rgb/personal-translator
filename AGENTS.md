@@ -120,7 +120,7 @@ Target architecture:
 Audio Stream
 → Voice Activity Detection
 → Speech Recognition
-→ Conversation State
+→ Conversation Buffer
 → Understanding Layer
 → Suggestion Layer
 → Wearable Display
@@ -417,7 +417,7 @@ Must preserve:
 
 ---
 
-## Conversation State
+## Conversation Buffer
 
 Single source of truth.
 
@@ -456,7 +456,7 @@ Real-Time Path:
 Mic
 → VAD
 → STT
-→ Conversation State
+→ Conversation Buffer
 → LLM
 → Display
 

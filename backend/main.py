@@ -11,13 +11,14 @@ Controls:
     Ctrl+C        →  quit
 """
 
+import os
 import signal
 import sys
 import threading
 import time
 
 from config import GROQ_API_KEY
-from services.audio import record_chunk, CHUNK_SECONDS
+from services.audio import record_chunk, extract_pcm, pcm_to_wav, CHUNK_SECONDS
 from services.conversation import conversation
 from services.copilot import copilot_service
 from services.display import display
@@ -61,7 +62,7 @@ def _process_other_turn(turn_n: int, speech: SpeechResult, turns: list) -> None:
 
 # ─── Keyboard (push-to-mute) ──────────────────────────────────────────────────
 
-def _setup_keyboard(muted: threading.Event) -> None:
+def _setup_keyboard(muted: threading.Event, get_turn_n) -> None:
     """Attach push-to-mute listener via pynput.
 
     Device target: hardware mute button or proximity sensor on glasses frame.
@@ -75,8 +76,8 @@ def _setup_keyboard(muted: threading.Event) -> None:
                     display.status("muted — you're speaking")
                 muted.set()
             elif hasattr(key, "char") and key.char == "q":
-                display.session_summary(0, time.time() - (_session_start or time.time()))
-                sys.exit(0)
+                display.session_summary(get_turn_n(), time.time() - (_session_start or time.time()))
+                os._exit(0)
 
         def on_release(key):
             if key == keyboard.Key.space:
@@ -105,7 +106,7 @@ def main() -> None:
     muted    = threading.Event()
     turn_n   = 0
     user_audio_chunks = []
-    _setup_keyboard(muted)
+    _setup_keyboard(muted, lambda: turn_n)
     display.status("listening...")
 
     # Clean shutdown on SIGTERM
@@ -129,7 +130,7 @@ def main() -> None:
 
             if user_audio_chunks:
                 speech = speech_service.transcribe_user_audio(
-                    b"".join(user_audio_chunks),
+                    pcm_to_wav(b"".join(extract_pcm(c) for c in user_audio_chunks)),
                     "user_utterance.wav",
                 )
                 user_audio_chunks.clear()

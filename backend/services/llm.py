@@ -120,20 +120,6 @@ def _run_groq_stream(
 
 # ─── Main calls ───────────────────────────────────────────────────────────────
 
-def call_llm(turns: list, on_token: Callable[[str], None] = None) -> LLMResult:
-    """
-    Call Groq LLM for copilot analysis — single call produces intent + summary + reply.
-    """
-    system_prompt     = _build_system_prompt(COPILOT_PROMPT)
-    conversation_text = _build_conversation_text(turns)
-
-    return _run_groq_stream(
-        system_prompt,
-        f"Conversation:\n{conversation_text}\n\nAnalyze the last message from 'Other'.",
-        on_token,
-    )
-
-
 def call_verification_llm(turns: list, on_token: Callable[[str], None] = None) -> LLMResult:
     """
     Call Groq LLM for user speech verification.

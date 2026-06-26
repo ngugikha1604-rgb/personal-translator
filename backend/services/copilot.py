@@ -105,13 +105,6 @@ class CopilotService:
         analysis = Analyzer().analyze(turns)
         reply    = ReplyGenerator().generate(analysis)
 
-        # Lightweight metrics for before/after comparison
-        import sys
-        print(f"[metrics] prompt_tokens={analysis.prompt_tokens} "
-              f"llm_ms={analysis.llm_ms} "
-              f"completion_tokens={analysis.completion_tokens}",
-              file=sys.stderr)
-
         return CopilotResult(
             intent            = analysis.intent,
             reply             = reply,
