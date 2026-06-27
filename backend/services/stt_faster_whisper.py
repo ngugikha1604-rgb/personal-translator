@@ -37,6 +37,8 @@ class FasterWhisperProvider(STTProvider):
         segments, _info = self._model.transcribe(
             audio,
             language="en",
+            beam_size=1,
+            condition_on_previous_text=False,
             vad_filter=False,
         )
         return " ".join(segment.text.strip() for segment in segments).strip()

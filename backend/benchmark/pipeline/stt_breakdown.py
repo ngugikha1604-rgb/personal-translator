@@ -99,6 +99,13 @@ def benchmark_provider(
 
 
 def load_audio(path: str) -> bytes:
+    if not os.path.isfile(path):
+        abs_path = os.path.abspath(path)
+        raise FileNotFoundError(
+            f"WAV file not found: {abs_path}\n"
+            f"  - Make sure the path is correct (run from backend/ dir)\n"
+            f"  - Or use --record to capture from mic instead"
+        )
     with open(path, "rb") as f:
         return f.read()
 
@@ -161,7 +168,7 @@ def main():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     if args.wav:
-        print(f"  Loading WAV: {args.wav}")
+        print(f"  Loading WAV: {os.path.abspath(args.wav)}")
         audio = load_audio(args.wav)
         filename = os.path.basename(args.wav)
         label = os.path.basename(args.wav)
