@@ -1,10 +1,10 @@
-{"wav_to_float_ms": 0.44, "transcribe_call_ms": 27.09, "segment_iteration_ms": 3993.04, "total_ms": 4020.58, "segments_found": 1, "transcript_length_words": 2, "transcript": "Oh, yeah."}
-{"wav_to_float_ms": 0.48, "transcribe_call_ms": 11.66, "segment_iteration_ms": 4815.99, "total_ms": 4828.14, "segments_found": 4, "transcript_length_words": 7, "transcript": "No.  No.  Yeah.  I don't know yet."}
-{"wav_to_float_ms": 0.8, "transcribe_call_ms": 13.61, "segment_iteration_ms": 3397.06, "total_ms": 3411.47, "segments_found": 1, "transcript_length_words": 2, "transcript": "Oh, yeah."}
-{"wav_to_float_ms": 0.58, "transcribe_call_ms": 9.89, "segment_iteration_ms": 3639.71, "total_ms": 3650.19, "segments_found": 1, "transcript_length_words": 2, "transcript": "Oh, yeah."}
-{"wav_to_float_ms": 0.19, "transcribe_call_ms": 11.8, "segment_iteration_ms": 9739.49, "total_ms": 9751.49, "segments_found": 1, "transcript_length_words": 4, "transcript": "I don't know yet."}
-{"wav_to_float_ms": 0.44, "transcribe_call_ms": 14.36, "segment_iteration_ms": 9869.71, "total_ms": 9884.52, "segments_found": 1, "transcript_length_words": 4, "transcript": "I don't know yet."}
-{"wav_to_float_ms": 0.43, "transcribe_call_ms": 13.5, "segment_iteration_ms": 8806.58, "total_ms": 8820.52, "segments_found": 1, "transcript_length_words": 2, "transcript": "Oh, yeah."}
-{"wav_to_float_ms": 0.44, "transcribe_call_ms": 18.5, "segment_iteration_ms": 8789.05, "total_ms": 8808.0, "segments_found": 1, "transcript_length_words": 2, "transcript": "Oh, yeah."}
-{"wav_to_float_ms": 0.56, "transcribe_call_ms": 24.46, "segment_iteration_ms": 5778.3, "total_ms": 5803.33, "segments_found": 1, "transcript_length_words": 2, "transcript": "Oh, yeah."}
-{"wav_to_float_ms": 1.66, "transcribe_call_ms": 20.83, "segment_iteration_ms": 8959.72, "total_ms": 8982.22, "segments_found": 1, "transcript_length_words": 2, "transcript": "Oh, yeah."}
+{"wav_to_float_ms": 0.44, "transcribe_call_ms": 61.1, "segment_iteration_ms": 1997.05, "total_ms": 2058.59, "segments_found": 1, "transcript_length_words": 6, "transcript": "Stop it, don't eat me, man."}
+{"wav_to_float_ms": 1.07, "transcribe_call_ms": 17.83, "segment_iteration_ms": 1712.26, "total_ms": 1731.17, "segments_found": 1, "transcript_length_words": 6, "transcript": "Stop it, don't eat me, man."}
+{"wav_to_float_ms": 0.5, "transcribe_call_ms": 11.63, "segment_iteration_ms": 1562.35, "total_ms": 1574.49, "segments_found": 1, "transcript_length_words": 6, "transcript": "Stop it, don't eat me, man."}
+{"wav_to_float_ms": 0.55, "transcribe_call_ms": 14.09, "segment_iteration_ms": 1695.8, "total_ms": 1710.45, "segments_found": 1, "transcript_length_words": 4, "transcript": "It's nothing, don't it?"}
+{"wav_to_float_ms": 0.62, "transcribe_call_ms": 12.62, "segment_iteration_ms": 1833.72, "total_ms": 1846.97, "segments_found": 1, "transcript_length_words": 6, "transcript": "Stop it, don't eat me, man."}
+{"wav_to_float_ms": 0.33, "transcribe_call_ms": 11.27, "segment_iteration_ms": 2927.02, "total_ms": 2938.63, "segments_found": 1, "transcript_length_words": 6, "transcript": "It's nothing, don't eat me, man."}
+{"wav_to_float_ms": 2.33, "transcribe_call_ms": 24.21, "segment_iteration_ms": 3346.41, "total_ms": 3372.96, "segments_found": 1, "transcript_length_words": 6, "transcript": "Stop it, don't eat me, man."}
+{"wav_to_float_ms": 3.04, "transcribe_call_ms": 16.26, "segment_iteration_ms": 3613.82, "total_ms": 3633.12, "segments_found": 1, "transcript_length_words": 6, "transcript": "Stop it, don't eat me, man."}
+{"wav_to_float_ms": 0.23, "transcribe_call_ms": 10.8, "segment_iteration_ms": 3381.15, "total_ms": 3392.19, "segments_found": 1, "transcript_length_words": 4, "transcript": "It's nothing, don't it?"}
+{"wav_to_float_ms": 0.27, "transcribe_call_ms": 26.54, "segment_iteration_ms": 2536.05, "total_ms": 2562.87, "segments_found": 1, "transcript_length_words": 6, "transcript": "Stop it, don't eat me, man."}

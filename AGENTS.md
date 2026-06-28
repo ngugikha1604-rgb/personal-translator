@@ -534,6 +534,193 @@ If not, avoid the call.
 
 ---
 
+# Benchmark Results
+
+All performance decisions are based on empirical measurement.
+
+Do not propose optimizations that contradict the results below.
+
+Do not re-optimize things already benchmarked.
+
+---
+
+## LLM is not the bottleneck
+
+Measured:
+
+```
+Groq 70B: ≈390 ms
+Groq 8B:  ≈437 ms
+```
+
+Smaller model is not faster.
+
+Do not downgrade the model to save latency.
+
+Do not reduce conversation history aggressively for latency.
+
+Do not remove few-shot examples from the prompt for latency.
+
+These changes save only ≈20–30 ms and are not worth the quality cost.
+
+---
+
+## STT is the dominant bottleneck
+
+The pipeline bottleneck is in STT, not LLM.
+
+Optimize STT before anything else.
+
+---
+
+## Faster Whisper: tiny.en is the correct model
+
+`base.en` measured ≈6–10 s for 5 s of audio. Unacceptable for real-time.
+
+`tiny.en` measured ≈1.6–3.6 s for 5 s of audio.
+
+Do not switch back to `base.en`.
+
+Do not propose larger models without a new benchmark.
+
+---
+
+## Faster Whisper: cpu_threads=4 is optimal
+
+Thread scaling results:
+
+| Threads | Mean latency |
+|---------|--------------|
+| 1       | 1064 ms      |
+| 2       | 695 ms       |
+| 4       | 617 ms       |
+| 8       | 1008 ms      |
+| 16      | 867 ms       |
+
+4 threads is the sweet spot on current hardware.
+
+More threads causes scheduling overhead and cache contention.
+
+Do not increase `cpu_threads` without re-running the benchmark.
+
+---
+
+## Faster Whisper: internal time breakdown
+
+```
+WAV → float32: ≈0.5 ms   — negligible
+transcribe():   ≈10–20 ms
+segment iter:   97–100% of total time
+```
+
+All time is inside CTranslate2 inference.
+
+Do not optimize Python-side parsing.
+
+Do not optimize WAV conversion.
+
+Do not propose chunked WAV streaming as a latency fix — the bottleneck is inference, not I/O.
+
+---
+
+## Confirmed Faster Whisper configuration
+
+```
+model:                      tiny.en
+device:                     cpu
+compute_type:               int8
+cpu_threads:                4
+beam_size:                  1
+condition_on_previous_text: False
+```
+
+This is the benchmarked optimum on current hardware.
+
+Do not change any of these values without a new benchmark.
+
+---
+
+## Current STT latency baseline
+
+```
+≈600–700 ms for 5 s audio
+RTF ≈ 0.12
+```
+
+Real-time is achievable. Architecture is now the remaining constraint.
+
+---
+
+## Model initialization is not repeated
+
+The STT provider is a singleton.
+
+The model loads once at startup.
+
+Do not propose caching or lazy loading as an optimization — it is already solved.
+
+---
+
+## Verification LLM is not a latency concern
+
+Verification runs only at end-of-utterance.
+
+It is not on the hot path.
+
+Do not remove it for latency reasons.
+
+Only remove it if token budget becomes a concern.
+
+---
+
+## Remaining architectural bottleneck
+
+After all model-level optimizations, the bottleneck is the fixed recording window:
+
+```
+Current:  record 5 s → STT → LLM
+Target:   speech ends → STT immediately → LLM
+```
+
+The next meaningful latency gain requires VAD-based dynamic chunking (P1 below).
+
+---
+
+# Optimization Roadmap
+
+## P0 — Completed
+
+* ✅ Benchmark full pipeline
+* ✅ Benchmark STT latency
+* ✅ Benchmark Faster Whisper internals
+* ✅ Benchmark thread scaling
+* ✅ Switch to `tiny.en`
+* ✅ Set `cpu_threads=4`
+
+## P1 — High ROI (implement next)
+
+Replace `record_chunk(5)` with `record_until_silence()`.
+
+Potential savings: 200 ms – 4000 ms depending on utterance length.
+
+This is the highest-ROI remaining optimization.
+
+Requires: reliable VAD (Silero VAD or equivalent).
+
+## P2 — Medium ROI
+
+Overlap audio recording with STT.
+
+Do not block recording while waiting for STT result.
+
+## P3 — Optional cost reduction
+
+Remove Verification LLM.
+
+Not a latency concern. Only relevant if token budget is constrained.
+
+---
+
 # Utterance Filtering
 
 Not every transcript deserves an LLM call.

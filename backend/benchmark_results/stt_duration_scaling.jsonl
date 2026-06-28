@@ -1,0 +1,4 @@
+{"duration_s": 2.0, "wav_to_float_ms": 0.1, "transcribe_call_ms": 4.23, "segment_iteration_ms": 602.41, "total_ms": 606.64, "segments_found": 0, "transcript_length_words": 0, "transcript": ""}
+{"duration_s": 2.0, "wav_to_float_ms": 0.1, "transcribe_call_ms": 16.46, "segment_iteration_ms": 1602.36, "total_ms": 1618.82, "segments_found": 0, "transcript_length_words": 0, "transcript": ""}
+{"duration_s": 5.0, "wav_to_float_ms": 0.71, "transcribe_call_ms": 20.0, "segment_iteration_ms": 1093.96, "total_ms": 1113.96, "segments_found": 0, "transcript_length_words": 0, "transcript": ""}
+{"duration_s": 5.0, "wav_to_float_ms": 0.71, "transcribe_call_ms": 22.09, "segment_iteration_ms": 951.13, "total_ms": 973.22, "segments_found": 0, "transcript_length_words": 0, "transcript": ""}

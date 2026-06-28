@@ -1,0 +1,41 @@
+{
+  "model": "tiny.en",
+  "device": "cpu",
+  "compute_type": "int8",
+  "runs_per_duration": 2,
+  "results": [
+    {
+      "duration_s": 2.0,
+      "mean_total_ms": 1112.7,
+      "median_total_ms": 1112.7,
+      "p95_total_ms": 1618.8,
+      "min_total_ms": 606.6,
+      "max_total_ms": 1618.8,
+      "std_total_ms": 715.7,
+      "rtf": 0.556,
+      "latency_per_second": 556.4
+    },
+    {
+      "duration_s": 5.0,
+      "mean_total_ms": 1043.6,
+      "median_total_ms": 1043.6,
+      "p95_total_ms": 1114.0,
+      "min_total_ms": 973.2,
+      "max_total_ms": 1114.0,
+      "std_total_ms": 99.5,
+      "rtf": 0.209,
+      "latency_per_second": 208.7
+    }
+  ],
+  "linear_fit": {
+    "fixed_overhead_ms": 1158.8,
+    "ms_per_second_audio": -23.0,
+    "r_squared": 1.0
+  },
+  "interpretation": "Estimated fixed overhead: 1159 ms\nEstimated processing cost: -23 ms per second of audio\nR\u00b2: 1.0000\nLatency scales almost linearly with audio duration.\nFixed overhead dominates \u2014 Dynamic Chunking may offer minimal benefit.",
+  "recommendation": {
+    "dynamic_chunking_benefit": "Low",
+    "fixed_overhead_pct_at_5s": 111.0,
+    "note": "Reducing audio chunk length is likely to reduce latency proportionally if per-second processing cost dominates."
+  }
+}

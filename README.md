@@ -385,6 +385,178 @@ It is not the final deployment architecture.
 
 ---
 
+# Performance Benchmarks
+
+All performance decisions in this project are based on empirical measurement, not assumption.
+
+The following results were collected on the current development machine.
+
+---
+
+## Pipeline Bottleneck
+
+STT is the dominant bottleneck in the pipeline.
+
+LLM is not the bottleneck.
+
+Measured Groq LLM latency:
+
+```
+Groq 70B: ≈390 ms
+Groq 8B:  ≈437 ms
+```
+
+Smaller model was not faster.
+Downgrading model quality is not justified by latency gains.
+
+---
+
+## STT Model Selection
+
+Faster Whisper `base.en` was too slow for real-time use:
+
+```
+base.en: ≈6–10 s for 5 s of audio
+```
+
+After switching to `tiny.en`:
+
+```
+tiny.en: ≈1.6–3.6 s for 5 s of audio
+```
+
+Approximately 2.5–3× faster with no architectural change.
+
+---
+
+## Faster Whisper Internal Breakdown
+
+Time breakdown inside `model.transcribe()`:
+
+```
+WAV → float32 conversion: ≈0.5 ms
+transcribe() call:         ≈10–20 ms
+segment iteration:         97–100% of total time
+```
+
+All time is inside CTranslate2 inference.
+Python overhead is negligible.
+WAV conversion is negligible.
+
+---
+
+## Thread Scaling Results
+
+Measured `cpu_threads` impact on Faster Whisper latency:
+
+| Threads | Mean latency |
+|---------|--------------|
+| 1       | 1064 ms      |
+| 2       | 695 ms       |
+| 4       | 617 ms       |
+| 8       | 1008 ms      |
+| 16      | 867 ms       |
+
+Optimal: `cpu_threads=4`
+
+Higher thread counts increase scheduling overhead and cache contention.
+
+---
+
+## Current Faster Whisper Configuration
+
+Best configuration measured on current hardware:
+
+```
+model:          tiny.en
+device:         cpu
+compute_type:   int8
+cpu_threads:    4
+beam_size:      1
+condition_on_previous_text: False
+```
+
+Do not change these values without re-running the thread scaling benchmark.
+
+---
+
+## Current STT Latency Baseline
+
+After all optimizations:
+
+```
+≈600–700 ms for 5 s of audio
+RTF ≈ 0.12
+```
+
+The system processes audio approximately 8× faster than real-time.
+
+---
+
+## Other Findings
+
+JSON parsing overhead: `≈0.5 ms` — negligible.
+
+Reducing `CONVERSATION_MAX_TURNS` from 10 to 4: saves `≈20–30 ms` — not worth the context loss.
+
+Prompt trimming: saves `≈20–30 ms` — not worth sacrificing suggestion quality.
+
+Verification LLM: not on the hot path. Runs only at end-of-utterance. Not a latency bottleneck.
+
+Model singleton: `_provider` is initialized once at startup. Model is not reloaded per STT call.
+
+---
+
+## Remaining Bottleneck
+
+After all current optimizations, the remaining bottleneck is pipeline architecture:
+
+```
+Current:   record 5 s → STT → LLM
+Target:    speech end → STT immediately → LLM
+```
+
+The fixed 5-second recording window adds unnecessary latency at the architecture level.
+
+This is addressed by P1 on the optimization roadmap.
+
+---
+
+# Optimization Roadmap
+
+## P0 — Completed
+
+* ✅ Full pipeline latency benchmark
+* ✅ STT latency benchmark
+* ✅ Faster Whisper internal probe
+* ✅ Thread scaling benchmark
+* ✅ Switch to `tiny.en`
+* ✅ Set `cpu_threads=4`
+
+## P1 — High ROI (next)
+
+Replace fixed-duration recording with VAD-based dynamic chunking.
+
+Change `record_chunk(5)` to `record_until_silence()`.
+
+Potential savings: `200 ms – 4000 ms` depending on utterance length.
+
+This is the highest-ROI remaining optimization.
+
+## P2 — Medium ROI
+
+Overlap audio recording with STT processing.
+
+Do not block recording while waiting for STT to complete.
+
+## P3 — Optional
+
+Remove Verification LLM to reduce token usage.
+
+Not a latency issue. Purely a cost optimization if needed.
+
+---
+
 # Project Structure
 
 ```text
@@ -414,6 +586,8 @@ personal_conversation_copilot/
 Priority #1
 
 Reduce conversation latency.
+
+Next target: VAD-based dynamic chunking (P1 on roadmap).
 
 Priority #2
 

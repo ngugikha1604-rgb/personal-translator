@@ -1,0 +1,133 @@
+{
+  "audio_duration_ms": 5000,
+  "model": "tiny.en",
+  "device": "cpu",
+  "compute_type": "int8",
+  "runs_per_config": 5,
+  "configurations": [
+    {
+      "cpu_threads": 1,
+      "load_model_ms": 1144.9,
+      "total_ms": {
+        "mean": 1064.2,
+        "median": 1055.0,
+        "p95": 1285.7,
+        "min": 897.3,
+        "max": 1285.7
+      },
+      "gen_call_ms": {
+        "mean": 13.2,
+        "median": 10.8,
+        "p95": 25.6
+      },
+      "gen_iter_ms": {
+        "mean": 1051.0,
+        "median": 1045.6,
+        "p95": 1277.2
+      },
+      "realtime_factor": 0.213,
+      "notes": "real-time capable"
+    },
+    {
+      "cpu_threads": 2,
+      "load_model_ms": 667.5,
+      "total_ms": {
+        "mean": 694.8,
+        "median": 644.0,
+        "p95": 825.6,
+        "min": 606.5,
+        "max": 825.6
+      },
+      "gen_call_ms": {
+        "mean": 13.1,
+        "median": 11.8,
+        "p95": 22.0
+      },
+      "gen_iter_ms": {
+        "mean": 681.8,
+        "median": 634.2,
+        "p95": 803.6
+      },
+      "realtime_factor": 0.139,
+      "notes": "real-time capable"
+    },
+    {
+      "cpu_threads": 4,
+      "load_model_ms": 809.9,
+      "total_ms": {
+        "mean": 617.1,
+        "median": 597.7,
+        "p95": 730.3,
+        "min": 528.8,
+        "max": 730.3
+      },
+      "gen_call_ms": {
+        "mean": 8.5,
+        "median": 8.5,
+        "p95": 10.7
+      },
+      "gen_iter_ms": {
+        "mean": 608.6,
+        "median": 589.6,
+        "p95": 719.6
+      },
+      "realtime_factor": 0.123,
+      "notes": "real-time capable"
+    },
+    {
+      "cpu_threads": 8,
+      "load_model_ms": 999.2,
+      "total_ms": {
+        "mean": 1007.5,
+        "median": 1061.5,
+        "p95": 1236.9,
+        "min": 731.7,
+        "max": 1236.9
+      },
+      "gen_call_ms": {
+        "mean": 18.8,
+        "median": 17.6,
+        "p95": 24.4
+      },
+      "gen_iter_ms": {
+        "mean": 988.8,
+        "median": 1039.6,
+        "p95": 1219.3
+      },
+      "realtime_factor": 0.202,
+      "notes": "real-time capable"
+    },
+    {
+      "cpu_threads": 16,
+      "load_model_ms": 1179.7,
+      "total_ms": {
+        "mean": 866.5,
+        "median": 845.0,
+        "p95": 978.5,
+        "min": 771.2,
+        "max": 978.5
+      },
+      "gen_call_ms": {
+        "mean": 16.5,
+        "median": 16.4,
+        "p95": 20.0
+      },
+      "gen_iter_ms": {
+        "mean": 849.9,
+        "median": 830.4,
+        "p95": 962.2
+      },
+      "realtime_factor": 0.173,
+      "notes": "real-time capable"
+    }
+  ],
+  "recommendation": {
+    "fastest_thread_count": 4,
+    "fastest_mean_ms": 617.1,
+    "fastest_rtf": 0.123,
+    "diminishing_returns_at": 8,
+    "recommended_threads": 4,
+    "rationale": "cpu_threads=4 gives lowest mean latency (617ms). Beyond 8 threads, additional cores provide <10% improvement. Recommended: 4 threads."
+  },
+  "@recommend_note": "Set CPU_THREADS=<N> in .env or pass cpu_threads=N to faster_whisper initialization. This is NOT the same as CPU count \u2014 it controls internal thread pool for the model."
+}

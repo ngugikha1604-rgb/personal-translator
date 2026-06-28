@@ -6,6 +6,7 @@ from faster_whisper import WhisperModel
 
 from config import (
     FASTER_WHISPER_COMPUTE_TYPE,
+    FASTER_WHISPER_CPU_THREADS,
     FASTER_WHISPER_DEVICE,
     FASTER_WHISPER_MODEL,
 )
@@ -30,6 +31,7 @@ class FasterWhisperProvider(STTProvider):
             model_size or FASTER_WHISPER_MODEL,
             device=device or FASTER_WHISPER_DEVICE,
             compute_type=compute_type or FASTER_WHISPER_COMPUTE_TYPE,
+            cpu_threads=FASTER_WHISPER_CPU_THREADS,
         )
 
     def transcribe(self, audio_bytes: bytes, filename: str = "audio.wav") -> str:
