@@ -1,0 +1,59 @@
+{
+  "model": "tiny.en",
+  "device": "cpu",
+  "compute_type": "int8",
+  "runs": 10,
+  "warmup_runs": 2,
+  "dominant_stage": {
+    "stage": "segment_iter_ms",
+    "mean_ms": 3801.0,
+    "pct_of_total": 99.6
+  },
+  "per_stage_stats": {
+    "log_mel_ms": {
+      "mean": 12.37,
+      "median": 9.26,
+      "p95": 21.29,
+      "min": 6.37,
+      "max": 21.29,
+      "std": 5.64,
+      "cv": 0.455
+    },
+    "encoder_ms": {
+      "mean": 775.78,
+      "median": 487.86,
+      "p95": 1369.63,
+      "min": 396.82,
+      "max": 1369.63,
+      "std": 446.76,
+      "cv": 0.576
+    },
+    "decoder_ms": {
+      "mean": 3023.82,
+      "median": 2215.99,
+      "p95": 9985.03,
+      "min": 434.23,
+      "max": 9985.03,
+      "std": 2969.71,
+      "cv": 0.982
+    },
+    "segment_iter_ms": {
+      "mean": 3800.98,
+      "median": 3106.26,
+      "p95": 11216.26,
+      "min": 833.14,
+      "max": 11216.26,
+      "std": 3169.53,
+      "cv": 0.834
+    },
+    "total_ms": {
+      "mean": 3816.46,
+      "median": 3124.44,
+      "p95": 11237.94,
+      "min": 845.37,
+      "max": 11237.94,
+      "std": 3172.09
+    }
+  },
+  "note": "encoder_ms = self.encode() \u2014 Whisper encoder (Conv1 + transformer). decoder_ms = self.model.generate() \u2014 CTranslate2 decoder + beam search (combined, cannot be separated without modifying ct2 source). log_mel_ms = feature_extractor \u2014 float32 \u2192 log-Mel spectrogram. segment_iter_ms = time to consume generator \u2014 segment assembly + python loop overhead."
+}
