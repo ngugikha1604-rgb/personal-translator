@@ -1,36 +1,48 @@
-"""stt_internal_stage_probe.py — Profile internal FasterWhisper stages (v2 — correct).
+"""stt_internal_stage_probe.py — Profile internal FasterWhisper stages (v3).
 
-Fixed design:
-  The original implementation treated "segment_iter_ms" as an independent
-  stage alongside encoder and decoder. This was wrong because FasterWhisper
-  uses a lazy generator: encoder, decoder, and segment assembly all run
-  INSIDE the generator iteration. segment_iter_ms is the CONTAINER, not a stage.
+Methodology fixes applied:
+  1. temperature=0.0 pinned — prevents multi-pass decoder fallback
+  2. other_overhead_ms → residual_ms — renamed to avoid implying it is a stage
+  3. decoder_ms scope documented — includes ct2 decoder + beam + Python wrapper
+  4. Short-audio assumption documented — audio << chunk_length(30s) → 1 pass
+  5. detect_language instrumented (if monkey-patchable) or documented in residual
 
 Correct execution timeline:
   model.transcribe(audio):
-    └── feature_extractor(audio)  ← EAGER: log-Mel spectrogram (~0-2ms)
+    └── feature_extractor(audio)  ← EAGER: log-Mel spectrogram
     └── returns generator (no work done)
 
   list(segments) — generator consumption:
     for each window:
-      ├── self.encode(segment)              ← encoder (monkey-patched)
-      ├── self.generate_with_fallback(...)   ← decoder + beam (monkey-patched)
+      ├── self.encode(segment)              ← encoder (monkey-patched → encoder_ms)
+      ├── self.model.detect_language(...)    ← language detection (monkey-patched → detect_language_ms)
+      ├── self.generate_with_fallback(...)   ← decoder + beam + Python wrapper (monkey-patched → decoder_ms)
       │     └── self.model.generate()       ← ct2 C++ call (cannot separate)
       ├── self._split_segments_by_timestamps()
       ├── Segment(...) object creation
       └── yield Segment(text=...)
 
 Correct breakdown:
-  generator_consumption_ms = encoder_ms + decoder_ms + other_overhead_ms
+  generator_consumption_ms = encoder_ms + decoder_ms + residual_ms
   total_ms = log_mel_ms + generator_consumption_ms (+ trivial join time)
 
-  where other_overhead_ms = generator_consumption_ms - encoder_ms - decoder_ms
-  (covers: segment splitting, language detection, Segment creation, loop overhead)
+  residual_ms = generator_consumption_ms - encoder_ms - decoder_ms
+  (covers: segment splitting, Segment creation, loop overhead, and
+   any uninstrumented Python work inside the generator)
 
-This ensures:
-  - encoder + decoder + overhead ≈ generator_consumption (mutually exclusive)
-  - No stages overlap or double-count
-  - Sum of sub-stages equals total within measurement noise
+Decoder_ms note:
+  This wraps generate_with_fallback(), which is a 130-line Python method.
+  It includes: ct2 decoder inference, beam search, temperature fallback
+  (pinned to 0.0 so no fallback), tokenizer decoding, compression ratio
+  checks, log-prob scoring, result selection, and Python wrapper overhead.
+  These sub-components cannot be separated without modifying CTranslate2
+  or FasterWhisper source code.
+
+Short-audio assumption:
+  Audio is always << chunk_length (30s default), so exactly one encoder
+  pass and one decoder pass occur per transcription. This assumption is
+  valid for all benchmark inputs (0.5-10s). For audio exceeding chunk_length,
+  the benchmark would need updating.
 
 Usage:
     cd backend
@@ -51,7 +63,6 @@ import types
 from statistics import mean, median, stdev
 from io import BytesIO
 import wave
-import collections
 
 import numpy as np
 
@@ -76,9 +87,10 @@ class StageTimingCollector:
     """Collects per-stage timing from monkey-patched methods.
 
     Each record is {stage, ms, call}. stage is one of:
-      "encoder_ms"       — self.encode() → Whisper encoder
-      "decoder_ms"       — self.generate_with_fallback() → decoder + beam
-      "log_mel_ms"       — feature_extractor → float32 → log-Mel spectrogram
+      "encoder_ms"            — self.encode() → Whisper encoder
+      "decoder_ms"            — self.generate_with_fallback() → decoder wrapper
+      "log_mel_ms"            — feature_extractor → log-Mel spectrogram
+      "detect_language_ms"    — self.model.detect_language() (if patchable)
     """
 
     def __init__(self):
@@ -97,32 +109,65 @@ class StageTimingCollector:
         self._call_counter = 0
 
     def sum_stage(self, stage: str) -> float:
-        """Sum of all recorded milliseconds for a given stage."""
         return sum(r["ms"] for r in self.records if r["stage"] == stage)
 
 
+def _safe_patch_detect_language(model, collector: StageTimingCollector) -> bool:
+    """Attempt to monkey-patch model.model.detect_language().
+
+    This is a CTranslate2 C extension method. On some ct2 versions it is
+    patchable; on others it raises AttributeError (read-only). Returns True
+    if patching succeeded, False otherwise.
+    """
+    try:
+        original = model.model.detect_language
+    except AttributeError:
+        return False
+
+    if not callable(original):
+        return False
+
+    # Try MethodType patching
+    try:
+        def timed_detect_language(self_obj, *args, **kwargs):
+            call_n = collector.next_call()
+            t0 = time.perf_counter()
+            result = original(*args, **kwargs)
+            t1 = time.perf_counter()
+            collector.record("detect_language_ms", (t1 - t0) * 1000, call_n)
+            return result
+
+        bound = types.MethodType(timed_detect_language, model.model)
+        model.model.detect_language = bound
+        return True
+    except (AttributeError, TypeError):
+        return False
+
+
 def instrument_model(model, collector: StageTimingCollector):
-    """Monkey-patch encoder, generate_with_fallback, and feature_extractor.
+    """Monkey-patch internal methods on a live WhisperModel instance.
 
-    Patches are applied to the MODEL INSTANCE only. Does not modify
-    the class or any other instance. Restored by reinstantiating the
-    model (which the benchmark does on each run).
+    Patches applied:
+      - model.encode()                    → encoder_ms
+      - model.generate_with_fallback()    → decoder_ms (wrapper)
+      - model.model.detect_language()     → detect_language_ms (if patchable)
+      - model.feature_extractor           → log_mel_ms (via proxy)
 
-    Why we CAN instrument these:
-      - self.encode() is a Python method on the class → can monkey-patch
-      - self.generate_with_fallback() is a Python method → can monkey-patch
-      - self.feature_extractor is a CTranslate2 object → cannot monkey-patch
-        via types.MethodType. Use a proxy wrapper instead.
+    decoder_ms scope note:
+      generate_with_fallback() is ~130 lines of Python wrapping
+      self.model.generate(). It includes decoder inference, beam search,
+      temperature fallback (pinned to 0.0 so no fallback), tokenizer
+      decoding, compression ratio checks, log-prob scoring, result
+      selection, and Python wrapper overhead. These cannot be separated
+      without modifying FasterWhisper/ct2 source.
 
-    Why we CANNOT separate decoder from beam search:
-      - self.model.generate() is a CTranslate2 C extension method called
-        inside generate_with_fallback(). It performs both decoding and
-        beam search in one opaque call. Neither the ct2 Python bindings
-        nor the FasterWhisper wrapper expose these separately.
+    Short-audio assumption:
+      Audio duration << chunk_length (30s default) → exactly 1 encoder pass,
+      1 decoder pass, 1 language detection call per transcription.
     """
     collector.reset()
 
-    # ── 1. Monkey-patch model.encode() [encoder only] ──
+    # ── 1. Monkey-patch model.encode() ──
     original_encode = model.encode
 
     def timed_encode(self_obj, features):
@@ -135,9 +180,7 @@ def instrument_model(model, collector: StageTimingCollector):
 
     model.encode = types.MethodType(timed_encode, model)
 
-    # ── 2. Monkey-patch model.generate_with_fallback() [decoder + beam] ──
-    # This wraps self.model.generate() + scoring + result formatting.
-    # Cannot separate decoder from beam search — both are inside ct2 C++ call.
+    # ── 2. Monkey-patch model.generate_with_fallback() ──
     original_gwf = model.generate_with_fallback
 
     def timed_gwf(self_obj, encoder_output, prompt, tokenizer, options):
@@ -150,16 +193,18 @@ def instrument_model(model, collector: StageTimingCollector):
 
     model.generate_with_fallback = types.MethodType(timed_gwf, model)
 
-    # ── 3. Proxy for feature_extractor [log-Mel spectrogram] ──
-    # Python resolves __call__ on the object's TYPE, not the instance.
-    # Assigning a function to model.feature_extractor.__call__ is ignored.
-    # We replace the entire attribute with a proxy object whose class
-    # defines __call__, which Python will find correctly.
+    # ── 3. Proxy for feature_extractor ──
     if hasattr(model, 'feature_extractor'):
         _orig_fe = model.feature_extractor
         _collector = collector
 
         class _TimedFeatureExtractor:
+            """Proxy for feature_extractor. Records timing of __call__.
+
+            Python resolves __call__ on the object's TYPE, not instance,
+            so instance-level assignment to __call__ is ignored. We replace
+            the entire attribute with a proxy whose class defines __call__.
+            """
             def __init__(self, wrapped):
                 self._wrapped = wrapped
 
@@ -176,25 +221,33 @@ def instrument_model(model, collector: StageTimingCollector):
 
         model.feature_extractor = _TimedFeatureExtractor(_orig_fe)
 
+    # ── 4. Optional: patch model.model.detect_language() ──
+    lang_patched = _safe_patch_detect_language(model, collector)
+    if not lang_patched:
+        # detect_language is a ct2 C extension that cannot be monkey-patched.
+        # Its time will be captured inside residual_ms.
+        pass
+
 
 def run_one(model, collector, audio_float32: np.ndarray) -> dict:
     """Run one transcription with timing, return mutually exclusive breakdown.
 
-    Timing regions are designed to be ADDITIVE, not overlapping:
-      total_ms = log_mel_ms + generator_consumption_ms [+ trivial join overhead]
-      generator_consumption_ms = encoder_ms + decoder_ms + other_overhead_ms
+    Timing regions are ADDITIVE:
+      total_ms ≈ log_mel_ms + generator_consumption_ms
+      generator_consumption_ms ≈ encoder_ms + decoder_ms + residual_ms
 
-    No stage overlaps or double-counts any other stage.
+    No stage overlaps or double-counts.
     """
     collector.reset()
 
     # ── t_start to t_after_call: EAGER work ──
-    # model.transcribe(audio) eagerly runs feature_extractor (log-Mel)
-    # and returns a generator. No encoder/decoder work has happened yet.
+    # model.transcribe() runs feature_extractor eagerly, returns generator.
+    # temperature=0.0 is REQUIRED to prevent multi-pass decoder fallback.
     t_start = time.perf_counter()
     segments_gen, info = model.transcribe(
         audio_float32,
         language="en",
+        temperature=0.0,              # REQUIRED: single decoder pass
         beam_size=1,
         condition_on_previous_text=False,
         vad_filter=False,
@@ -202,15 +255,11 @@ def run_one(model, collector, audio_float32: np.ndarray) -> dict:
     t_after_call = time.perf_counter()
 
     # ── t_after_call to t_after_segments: LAZY generator consumption ──
-    # list(segments) iterates the generator, which drives the main loop
-    # inside generate_segments(). This is where all real computation
-    # (encoder, decoder, segment splitting) happens.
-    # The monkey-patched encode() and generate_with_fallback() fire
-    # during this interval.
+    # All computation (encoder, decoder, segment assembly) runs here.
     texts = list(segments_gen)
     t_after_segments = time.perf_counter()
 
-    # ── t_after_segments to t_done: transcript assembly (negligible) ──
+    # ── t_after_segments to t_done: transcript join (negligible) ──
     transcript = " ".join(seg.text for seg in texts).strip()
     t_done = time.perf_counter()
 
@@ -219,32 +268,26 @@ def run_one(model, collector, audio_float32: np.ndarray) -> dict:
     encoder_ms = collector.sum_stage("encoder_ms")
     decoder_ms = collector.sum_stage("decoder_ms")
     log_mel_ms = collector.sum_stage("log_mel_ms")
+    detect_language_ms = collector.sum_stage("detect_language_ms")
 
-    # other_overhead_ms = everything in generator except encoder + decoder
-    # This includes: segment splitting, language detection,
-    #                Segment object creation, loop overhead.
-    other_overhead_ms = generator_consumption_ms - encoder_ms - decoder_ms
-    if other_overhead_ms < 0:
-        # Measurement noise — clamp to 0
-        other_overhead_ms = 0.0
+    # residual_ms = everything in generator NOT captured by patched stages
+    # This is NOT a stage — it is the subtraction residual from all
+    # uninstrumented work (segment splitting, loop overhead, etc.).
+    # If detect_language was patched, it is subtracted here too.
+    residual_ms = generator_consumption_ms - encoder_ms - decoder_ms - detect_language_ms
+    # Not clamped: negative values reflect real measurement noise (timer jitter,
+    # CPU scheduling, warm caches). Clamping would hide noise floor info.
 
-    # Total wall time from t_start to t_done
     wall_total_ms = (t_done - t_start) * 1000
 
     return {
-        # Eager stage (happens inside model.transcribe before return)
         "log_mel_ms": round(log_mel_ms, 2),
-
-        # Lazy stages (happen inside list(segments))
         "generator_consumption_ms": round(generator_consumption_ms, 2),
         "encoder_ms": round(encoder_ms, 2),
         "decoder_ms": round(decoder_ms, 2),
-        "other_overhead_ms": round(other_overhead_ms, 2),
-
-        # Totals
+        "detect_language_ms": round(detect_language_ms, 2),
+        "residual_ms": round(residual_ms, 2),
         "total_ms": round(wall_total_ms, 2),
-
-        # Metadata
         "segments_found": len(texts),
         "transcript": transcript[:80],
         "encoder_calls": sum(1 for r in collector.records if r["stage"] == "encoder_ms"),
@@ -255,25 +298,25 @@ def run_one(model, collector, audio_float32: np.ndarray) -> dict:
 def print_stage_breakdown(all_results: list):
     """Print stage breakdown with additive verification.
 
-    The stages are organized hierarchically:
+    Stages are hierarchically organized:
       total_ms ≈ log_mel_ms + generator_consumption_ms
-      generator_consumption_ms ≈ encoder_ms + decoder_ms + other_overhead_ms
+      generator_consumption_ms ≈ encoder_ms + decoder_ms + residual_ms
     """
     lazy_stages_def = [
         ("encoder_ms",          "Encoder"),
-        ("decoder_ms",          "Decoder + beam search"),
-        ("other_overhead_ms",   "Other (segment splitting, etc.)"),
+        ("decoder_ms",          "Decoder wrapper (ct2 + Python post)"),
+        ("residual_ms",         "Residual (uninstrumented work)"),
     ]
     all_stages_def = [
         ("log_mel_ms",          "Log-Mel spectrogram (eager)"),
         ("generator_consumption_ms", "Generator consumption (total lazy work)"),
     ] + lazy_stages_def
 
-    print(f"\n  {'=' * 70}")
+    print(f"\n  {'=' * 75}")
     print(f"  Stage breakdown — mutually exclusive, additive")
-    print(f"  {'=' * 70}")
-    print(f"  {'Stage':32s} {'Mean':>9s} {'Median':>9s} {'P95':>9s} {'% of total':>10s}")
-    print(f"  {'-' * 70}")
+    print(f"  {'=' * 75}")
+    print(f"  {'Stage':35s} {'Mean':>9s} {'Median':>9s} {'P95':>9s} {'% of total':>10s}")
+    print(f"  {'-' * 75}")
 
     totals_per_run = [r["total_ms"] for r in all_results]
     mnt = mean(totals_per_run)
@@ -283,32 +326,30 @@ def print_stage_breakdown(all_results: list):
         n = len(vals)
         mn = mean(vals)
         md = median(vals)
-        p95 = vals[int(n * 0.95)]
+        p95 = float(np.percentile(vals, 95))
         pcts = [
             r[key] / r["total_ms"] * 100
             for r in all_results if r["total_ms"] > 0
         ]
         avg_pct = mean(pcts) if pcts else 0
-        print(f"  {label:32s} {mn:>9.2f} {md:>9.2f} {p95:>9.2f} {avg_pct:>9.1f}%")
+        print(f"  {label:35s} {mn:>9.2f} {md:>9.2f} {p95:>9.2f} {avg_pct:>9.1f}%")
 
-    print(f"  {'─' * 70}")
+    print(f"  {'─' * 75}")
 
-    # Additive verification
-    sum_lazy = mean([r["encoder_ms"] + r["decoder_ms"] + r["other_overhead_ms"]
+    sum_lazy = mean([r["encoder_ms"] + r["decoder_ms"] + r["residual_ms"]
                       for r in all_results])
     gen_mean = mean([r["generator_consumption_ms"] for r in all_results])
     diff_lazy = abs(sum_lazy - gen_mean)
     sum_all = mean([r["log_mel_ms"] + r["generator_consumption_ms"] for r in all_results])
     diff_all = abs(sum_all - mnt)
 
-    print(f"  Additive check: enc+dec+overhead={sum_lazy:.1f}ms vs gen_consumption={gen_mean:.1f}ms "
-          f"(diff={diff_lazy:.1f}ms)")
-    print(f"  Additive check: log_mel+gen_consumption={sum_all:.1f}ms vs total={mnt:.1f}ms "
-          f"(diff={diff_all:.1f}ms)")
+    print(f"  Additive: enc+dec+residual={sum_lazy:.1f} vs gen_consumption={gen_mean:.1f} "
+          f"(diff={diff_lazy:.2f}ms)")
+    print(f"  Additive: log_mel+gen_consumption={sum_all:.1f} vs total={mnt:.1f} "
+          f"(diff={diff_all:.2f}ms)")
 
     print()
 
-    # Dominant stage (among lazy work)
     lazy_means = {
         label: mean([r[key] for r in all_results])
         for key, label in lazy_stages_def
@@ -317,7 +358,7 @@ def print_stage_breakdown(all_results: list):
     dom_val = lazy_means[dominant]
     gen_avg = mean([r["generator_consumption_ms"] for r in all_results])
     dom_pct = dom_val / gen_avg * 100 if gen_avg > 0 else 0
-    print(f"  Dominant stage (during generator iteration): {dominant} ({dom_val:.0f}ms, {dom_pct:.1f}%)")
+    print(f"  Dominant generator work: {dominant} ({dom_val:.0f}ms, {dom_pct:.1f}%)")
     print()
 
 
@@ -339,7 +380,7 @@ def run_benchmark(audio_float32: np.ndarray, runs: int):
     # Warmup
     for _ in range(WARMUP_RUNS):
         gen, _ = model.transcribe(
-            audio_float32, language="en", beam_size=1,
+            audio_float32, language="en", temperature=0.0, beam_size=1,
             condition_on_previous_text=False, vad_filter=False,
         )
         _ = list(gen)
@@ -352,7 +393,7 @@ def run_benchmark(audio_float32: np.ndarray, runs: int):
         print(
             f"  [{i+1:2d}/{runs}] enc={result['encoder_ms']:>6.1f}ms  "
             f"dec={result['decoder_ms']:>6.1f}ms  "
-            f"overhead={result['other_overhead_ms']:>5.1f}ms  "
+            f"res={result['residual_ms']:>5.1f}ms  "
             f"gen={result['generator_consumption_ms']:>6.1f}ms  "
             f"total={result['total_ms']:>6.1f}ms"
         )
@@ -361,9 +402,10 @@ def run_benchmark(audio_float32: np.ndarray, runs: int):
     print_stage_breakdown(all_results)
 
     # ── Build report ──
+    # detect_language_ms is reported only if monkey-patching succeeded
     stage_fields = [
         "log_mel_ms", "generator_consumption_ms",
-        "encoder_ms", "decoder_ms", "other_overhead_ms"
+        "encoder_ms", "decoder_ms", "detect_language_ms", "residual_ms"
     ]
     per_stage_stats = {}
     for stage in stage_fields:
@@ -371,7 +413,7 @@ def run_benchmark(audio_float32: np.ndarray, runs: int):
         n = len(vals)
         mn = mean(vals) if n > 0 else 0
         md = median(vals) if n > 0 else 0
-        p95 = vals[int(n * 0.95)] if n > 1 else vals[0] if n > 0 else 0
+        p95 = float(np.percentile(vals, 95)) if vals else 0
         sd = stdev(vals) if n > 1 else 0
         cv = sd / mn if mn > 0 else 0
         per_stage_stats[stage] = {
@@ -388,17 +430,20 @@ def run_benchmark(audio_float32: np.ndarray, runs: int):
     per_stage_stats["total_ms"] = {
         "mean": round(mean(totals), 2) if totals else 0,
         "median": round(median(totals), 2) if totals else 0,
-        "p95": round(totals[int(len(totals) * 0.95)], 2) if totals else 0,
+        "p95": round(float(np.percentile(totals, 95)), 2) if totals else 0,
         "min": round(min(totals), 2) if totals else 0,
         "max": round(max(totals), 2) if totals else 0,
         "std": round(stdev(totals), 2) if len(totals) > 1 else 0,
     }
 
-    lazy_stages = ["encoder_ms", "decoder_ms", "other_overhead_ms"]
+    lazy_stages = ["encoder_ms", "decoder_ms", "residual_ms"]
     lazy_means = {s: per_stage_stats[s]["mean"] for s in lazy_stages}
     dominant = max(lazy_means, key=lazy_means.get)
     dom_val = lazy_means[dominant]
     gen_mean = per_stage_stats["generator_consumption_ms"]["mean"]
+
+    # Check if detect_language was successfully patched
+    lang_available = any(r.get("detect_language_ms", 0) > 0 for r in all_results)
 
     report = {
         "model": MODEL_NAME,
@@ -406,11 +451,19 @@ def run_benchmark(audio_float32: np.ndarray, runs: int):
         "compute_type": COMPUTE_TYPE,
         "runs": runs,
         "warmup_runs": WARMUP_RUNS,
+        "configuration": {
+            "temperature": 0.0,
+            "beam_size": 1,
+            "condition_on_previous_text": False,
+            "vad_filter": False,
+            "language": "en",
+        },
+        "detect_language_instrumented": lang_available,
         "additive_check": {
-            "lazy_sum_ms": round(sum_lazy, 1) if 'sum_lazy' in dir() else (
-                round(per_stage_stats["encoder_ms"]["mean"] +
-                      per_stage_stats["decoder_ms"]["mean"] +
-                      per_stage_stats["other_overhead_ms"]["mean"], 1)
+            "inner_sum_ms": round(
+                per_stage_stats["encoder_ms"]["mean"]
+                + per_stage_stats["decoder_ms"]["mean"]
+                + per_stage_stats["residual_ms"]["mean"], 1
             ),
             "generator_consumption_ms": round(gen_mean, 1),
             "total_reconstructed_ms": round(
@@ -424,20 +477,38 @@ def run_benchmark(audio_float32: np.ndarray, runs: int):
             "pct_of_generator_time": round(dom_val / gen_mean * 100, 1) if gen_mean > 0 else 0,
         },
         "per_stage_stats": per_stage_stats,
-        "methodology_note": (
-            "Timing regions are mutually exclusive. "
-            "total_ms = log_mel_ms + generator_consumption_ms (+ negligible join). "
-            "generator_consumption_ms = encoder_ms + decoder_ms + other_overhead_ms. "
-            "other_overhead_ms includes: _split_segments_by_timestamps(), "
-            "language detection, Segment object creation, and Python loop overhead."
+        "methodology_notes": (
+            "Timing regions are mutually exclusive and additive. "
+            "total_ms = log_mel_ms + generator_consumption_ms (+ trivial join). "
+            "generator_consumption_ms = encoder_ms + decoder_ms + detect_language_ms "
+            "+ residual_ms. "
+            "temperature=0.0 is pinned to prevent multi-pass decoder fallback. "
+            "Audio is always < chunk_length (30s) → exactly 1 encoder and 1 decoder pass. "
+            "decoder_ms wraps generate_with_fallback() — includes ct2 decoder, beam search, "
+            "tokenizer decode, log-prob scoring, compression checks, and Python wrapper overhead. "
+            "residual_ms is the subtraction residual, not a stage — it aggregates all "
+            "uninstrumented work (segment splitting, loop overhead, etc.)."
         ),
         "limitations": (
-            "Decoder + beam search are combined in ct2's self.model.generate() C++ call "
-            "and cannot be separated without modifying CTranslate2 source. "
-            "feature_extractor is a ct2 object; we proxy it with a wrapper whose "
-            "class defines __call__ to circumvent Python's type-level dunder resolution."
+            "1. Decoder + beam search cannot be separated — both are inside "
+            "ct2 self.model.generate() which is a C++ call. "
+            "2. generate_with_fallback() includes Python post-processing "
+            "(tokenizer decoding, compression checks, score computation) "
+            "that should not be attributed to decoder inference. "
+            "3. feature_extractor is proxied; isinstance() checks will see "
+            "the proxy, not the original. "
+            "4. detect_language is a ct2 C extension — only patchable on certain "
+            "ct2 versions. If not patchable, its time falls into residual_ms. "
+            "5. Short-audio assumption (<30s chunk_length). Not valid for "
+            "audio exceeding 30 seconds."
         ),
     }
+
+    if not lang_available:
+        report["detect_language_note"] = (
+            "detect_language could not be monkey-patched (ct2 C extension "
+            "is read-only on this version). Its time is included in residual_ms."
+        )
 
     # Save
     os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -445,7 +516,7 @@ def run_benchmark(audio_float32: np.ndarray, runs: int):
     with open(jsonl_path, "w") as f:
         for r in all_results:
             f.write(json.dumps(r) + "\n")
-    print(f"  Saved: {jsonl_path}")
+    print(f"\n  Saved: {jsonl_path}")
 
     report_path = os.path.join(OUTPUT_DIR, "stt_internal_stage_probe_report.json")
     with open(report_path, "w") as f:
@@ -466,7 +537,7 @@ def load_wav(path: str) -> bytes:
 def main():
     import argparse
     parser = argparse.ArgumentParser(
-        description="FasterWhisper internal stage probe (v2 — additive timing)"
+        description="FasterWhisper internal stage probe (v3 — publication quality)"
     )
     parser.add_argument("--wav", type=str, default=None, help="WAV file")
     parser.add_argument("--record", action="store_true", help="Record from mic")

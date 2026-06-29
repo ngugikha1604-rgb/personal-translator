@@ -1,0 +1,94 @@
+{
+  "model": "tiny.en",
+  "device": "cpu",
+  "compute_type": "int8",
+  "configuration": {
+    "temperature": 0.0,
+    "beam_size": 1,
+    "condition_on_previous_text": false,
+    "vad_filter": false,
+    "language": "en",
+    "chunk_sizes_ms": [
+      1000,
+      2000
+    ],
+    "runs_per_config": 1,
+    "warmup_runs": 2
+  },
+  "chunk_results": [
+    {
+      "chunk_ms": 1000,
+      "total_chunks_per_run": 4,
+      "total_decodes_per_run": 4,
+      "decodes_per_minute": 60.0,
+      "latency_ms": {
+        "mean": 1154.5,
+        "median": 1154.5,
+        "p95": 1166.8,
+        "min": 1142.3,
+        "max": 1166.8,
+        "std": 13.1,
+        "cv": 0.011
+      },
+      "first_result_delay_ms": {
+        "mean": 2154.5,
+        "median": 2154.5,
+        "p95": 2166.8
+      },
+      "rtf": {
+        "mean": 1.155
+      },
+      "cpu": {
+        "mean": 0.0,
+        "peak": 0.0
+      },
+      "rss_mb": {
+        "mean": 186.7,
+        "peak": 186.7
+      }
+    },
+    {
+      "chunk_ms": 2000,
+      "total_chunks_per_run": 2,
+      "total_decodes_per_run": 2,
+      "decodes_per_minute": 30.0,
+      "latency_ms": {
+        "mean": 1454.2,
+        "median": 1454.2,
+        "p95": 1575.4,
+        "min": 1332.9,
+        "max": 1575.4,
+        "std": 171.5,
+        "cv": 0.118
+      },
+      "first_result_delay_ms": {
+        "mean": 3454.2,
+        "median": 3454.2,
+        "p95": 3575.4
+      },
+      "rtf": {
+        "mean": 0.727
+      },
+      "cpu": {
+        "mean": 0.0,
+        "peak": 0.0
+      },
+      "rss_mb": {
+        "mean": 187.1,
+        "peak": 187.1
+      }
+    }
+  ],
+  "tradeoff": "No single 'optimal' chunk size. Tradeoffs by metric:\n  Lowest first_result_delay:  1000ms\n  Lowest decode latency:      1000ms\n  Best RTF (efficiency):      2000ms\n  Lowest CPU load:            1000ms\n  Fewest decodes/min:         2000ms\nDecision depends on application requirements (latency vs throughput).",
+  "methodology_notes": "This benchmark measures only independent chunk inference cost. It does NOT simulate rolling buffers, incremental decoding, context accumulation, partial hypothesis revision, or transcript stabilization. Those are evaluated in separate benchmarks.",
+  "limitations": [
+    "NO rolling buffer — chunks are independent, not accumulated.",
+    "NO transcript stabilization — raw per-chunk outputs, no merging logic.",
+    "NO incremental decoding — each chunk is a fresh STT request.",
+    "NO partial hypothesis revision — no mid-utterance updates.",
+    "NO LLM integration — measures STT only, not full pipeline.",
+    "NO VAD simulation — audio is pre-trimmed; real streaming has VAD delay.",
+    "CPU/RSS measurements are approximate (psutil sampling).",
+    "Single audio clip — results may vary with different speech content."
+  ]
+}

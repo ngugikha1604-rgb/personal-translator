@@ -1,0 +1,6 @@
+{"chunk_ms": 1000, "chunk_index": 0, "chunk_duration": 1.0, "run": 0, "latency_ms": 1142.31, "first_result_delay_ms": 2142.31, "latency_per_second_audio": 1142.31, "rtf": 1.1423, "cpu_percent": 0.0, "rss_mb": 186.7}
+{"chunk_ms": 1000, "chunk_index": 1, "chunk_duration": 1.0, "run": 0, "latency_ms": 1144.18, "first_result_delay_ms": 2144.18, "latency_per_second_audio": 1144.18, "rtf": 1.1442, "cpu_percent": 0.0, "rss_mb": 186.7}
+{"chunk_ms": 1000, "chunk_index": 2, "chunk_duration": 1.0, "run": 0, "latency_ms": 1166.78, "first_result_delay_ms": 2166.78, "latency_per_second_audio": 1166.78, "rtf": 1.1668, "cpu_percent": 0.0, "rss_mb": 186.7}
+{"chunk_ms": 1000, "chunk_index": 3, "chunk_duration": 1.0, "run": 0, "latency_ms": 1164.75, "first_result_delay_ms": 2164.75, "latency_per_second_audio": 1164.75, "rtf": 1.1647, "cpu_percent": 0.0, "rss_mb": 186.7}
+{"chunk_ms": 2000, "chunk_index": 0, "chunk_duration": 2.0, "run": 0, "latency_ms": 1575.43, "first_result_delay_ms": 3575.43, "latency_per_second_audio": 787.71, "rtf": 0.7877, "cpu_percent": 0.0, "rss_mb": 187.1}
+{"chunk_ms": 2000, "chunk_index": 1, "chunk_duration": 2.0, "run": 0, "latency_ms": 1332.89, "first_result_delay_ms": 3332.89, "latency_per_second_audio": 666.44, "rtf": 0.6664, "cpu_percent": 0.0, "rss_mb": 187.1}
