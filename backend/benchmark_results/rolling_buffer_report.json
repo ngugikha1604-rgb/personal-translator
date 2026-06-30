@@ -10,74 +10,78 @@
     "language": "en",
     "streaming_interval_ms": 500,
     "buffer_sizes_ms": [
-      1000,
-      2000
+      500
     ],
-    "warmup_runs": 2
+    "warmup_runs": 2,
+    "seed": 42,
+    "dataset_source": "custom",
+    "timestamp_source": "Word-level JSON if provided via --transcript; for LibriSpeech, Whisper-generated word alignments (approximate, not ground truth). Only transcript text is considered ground truth."
   },
   "has_ground_truth": false,
   "results": [
     {
-      "buffer_ms": 1000,
+      "buffer_ms": 500,
       "total_windows": 6,
-      "redundancy_ratio": 2.0,
+      "total_reference_words": 0,
+      "redundancy_ratio": 1.0,
       "decode_latency_ms": {
-        "mean": 651.1,
-        "median": 721.6,
-        "p95": 790.5,
-        "min": 432.8,
-        "max": 790.5,
-        "std": 163.8,
-        "cv": 0.252
+        "mean": 1472.3,
+        "median": 1476.7,
+        "p95": 1532.2,
+        "p99": 1532.2,
+        "min": 1401.8,
+        "max": 1532.2,
+        "std": 46.8,
+        "cv": 0.032
+      },
+      "pipeline_details": {
+        "slice_ms": {
+          "mean": 0.047
+        },
+        "convert_ms": {
+          "mean": 0.0
+        },
+        "decode_ms": {
+          "mean": 1472.3
+        },
+        "postprocess_ms": {
+          "mean": 0.078
+        },
+        "total_pipeline_ms": {
+          "mean": 1478.3
+        }
+      },
+      "pipeline_pct": {
+        "slice_pct": 0.0,
+        "convert_pct": 0.0,
+        "decode_pct": 100.0,
+        "postprocess_pct": 0.0
       },
       "rtf": {
-        "mean": 0.783
+        "mean": 2.945
       },
-      "backlog_ratio_p95": 1.58,
-      "backlog_miss_rate_pct": 66.7,
-      "cpu_percent": {
-        "mean": 0.0,
-        "observed_max": 0.0
+      "throughput": {
+        "windows_per_second": 0.68,
+        "audio_seconds_per_second": 0.338,
+        "processing_wall_seconds": 8.87,
+        "benchmark_wall_seconds": 9.18
       },
-      "rss_mb": {
-        "mean": 182.2,
-        "observed_max": 182.4
-      },
-      "wer": null,
-      "cer": null
-    },
-    {
-      "buffer_ms": 2000,
-      "total_windows": 6,
-      "redundancy_ratio": 4.0,
-      "decode_latency_ms": {
-        "mean": 771.7,
-        "median": 773.3,
-        "p95": 778.1,
-        "min": 760.0,
-        "max": 778.1,
-        "std": 6.4,
-        "cv": 0.008
-      },
-      "rtf": {
-        "mean": 0.663
-      },
-      "backlog_ratio_p95": 1.56,
+      "backlog_ratio_p95": 3.06,
       "backlog_miss_rate_pct": 100.0,
       "cpu_percent": {
-        "mean": 0.0,
-        "observed_max": 0.0
+        "mean": 336.8,
+        "observed_max": 366.0
       },
       "rss_mb": {
-        "mean": 182.8,
-        "observed_max": 182.9
+        "mean": 328.9,
+        "observed_max": 329.1
       },
       "wer": null,
       "cer": null
     }
   ],
-  "tradeoff": "No single 'optimal' rolling buffer. Tradeoffs by metric:\n  Best RTF (efficiency):      2000ms (RTF=0.663)\n  Lowest mean latency:         1000ms (651ms)\n  Best backlog ratio (P95):    2000ms (1.56)\n  Lowest redundancy:           1000ms (2.0x)\nThe appropriate rolling buffer depends on application requirements (accuracy vs latency vs compute cost).",
-  "methodology_notes": "This benchmark evaluates rolling window STT inference. Each rolling window is an independent STT request. NO transcript merging, NO stabilization, NO hypothesis revision. Words are assigned to windows by midpoint: midpoint = (start + end) / 2. WER/CER are weighted averages of per-window values (weighted by reference word count). Silent windows (zero reference words) are excluded.\n\nBacklog ratio P95 = P95 decode latency / streaming interval. Backlog miss rate = % of decodes exceeding the streaming interval. If backlog_ratio_p95 > 1.0, the system cannot sustain realtime streaming for 5% of decodes. Redundancy ratio = buffer_size / interval (derived, not measured).",
+  "tradeoff": "No single 'optimal' rolling buffer. Tradeoffs by metric:\n  Best RTF (efficiency):      500ms (RTF=2.945)\n  Lowest mean latency:         500ms (1472ms)\n  Best backlog ratio (P95):    500ms (3.06)\n  Lowest redundancy:           500ms (1.0x)\nThe appropriate rolling buffer depends on application requirements (accuracy vs latency vs compute cost).",
+  "methodology_notes": "This benchmark evaluates rolling audio buffer effects for STT inference. It uses a pre-loaded float32 numpy array as the rolling buffer — each window is a direct slice view (no WAV reconstruction, no file I/O per decode). Each rolling window is an independent STT request. NO transcript merging, NO stabilization, NO hypothesis revision, NO incremental decoding. Words are assigned to windows by midpoint: midpoint = (start + end) / 2. WER/CER are weighted averages of per-window values (weighted by reference word count). Silent windows (zero reference words) are excluded.\nRolling windows overlap; therefore reference words may be duplicated across windows. Weighted WER measures recognition quality per window and is NOT directly comparable to conventional full-audio corpus WER. It is intended for relative comparison between buffer sizes under identical methodology.\n\nPipeline timing breakdown:\n  slice_ms — time to slice the rolling buffer (numpy array view).\n  convert_ms — time to prepare input (negligible for float32).\n  decode_ms — Whisper model inference.\n  postprocess_ms — time to materialise segments and compute text/WER.\n  total_pipeline_ms — wall-clock time for the entire window processing.\n\nBacklog ratio P95 = P95 decode latency / streaming interval. Backlog miss rate = % of decodes exceeding the streaming interval. If backlog_ratio_p95 > 1.0, the system cannot sustain realtime streaming for 5% of decodes. Redundancy ratio = buffer_size / interval (derived, not measured).\n\nCPU utilization is computed as (process_time_delta / wall_time_delta) × 100. This is more reliable than psutil.cpu_percent(interval=0) which returns 0% for sub-second operations.\n\nRSS is monitored by a background thread that samples every ~5ms during decode. The maximum observed value (rss_mb_peak) is reported as rss_mb. Per-window rows also include rss_mb_before and rss_mb_after. Peak RSS is estimated by periodic sampling, NOT continuous OS-level tracing.",
   "limitations": [
     "NO transcript merging — windows are evaluated independently.",
     "NO transcript stabilization — no multi-hypothesis refinement.",
@@ -86,7 +90,10 @@
     "NO VAD simulation — audio is pre-trimmed; real streaming has VAD delay.",
     "Offline simulation only — does not measure network or UI latency.",
     "Single streaming interval tested; changing the interval may shift tradeoffs.",
-    "CPU utilization is sampled (psutil before/after inference) and is approximate.",
-    "RSS is observed resident memory during sampling, not peak memory."
+    "CPU utilization is computed from process_time deltas and is approximate for short operations.",
+    "Peak RSS is estimated by periodic sampling during decode, not continuous OS-level tracing.",
+    "Rolling buffer uses numpy array views — actual production buffer management overhead may differ.",
+    "Each rolling window is independently encoded and decoded. Encoder features are not reused between consecutive windows. Therefore measured latency represents independent inference rather than optimized incremental streaming.",
+    "Rolling windows overlap — reference words are duplicated across windows. Weighted WER measures per-window recognition quality and cannot be directly compared to conventional full-audio corpus WER. It is intended for relative buffer-size comparison only."
   ]
 }
