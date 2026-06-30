@@ -1,0 +1,92 @@
+{
+  "model": "tiny.en",
+  "device": "cpu",
+  "compute_type": "int8",
+  "configuration": {
+    "temperature": 0.0,
+    "beam_size": 1,
+    "condition_on_previous_text": false,
+    "vad_filter": false,
+    "language": "en",
+    "streaming_interval_ms": 500,
+    "buffer_sizes_ms": [
+      1000,
+      2000
+    ],
+    "warmup_runs": 2
+  },
+  "has_ground_truth": false,
+  "results": [
+    {
+      "buffer_ms": 1000,
+      "total_windows": 6,
+      "redundancy_ratio": 2.0,
+      "decode_latency_ms": {
+        "mean": 651.1,
+        "median": 721.6,
+        "p95": 790.5,
+        "min": 432.8,
+        "max": 790.5,
+        "std": 163.8,
+        "cv": 0.252
+      },
+      "rtf": {
+        "mean": 0.783
+      },
+      "backlog_ratio_p95": 1.58,
+      "backlog_miss_rate_pct": 66.7,
+      "cpu_percent": {
+        "mean": 0.0,
+        "observed_max": 0.0
+      },
+      "rss_mb": {
+        "mean": 182.2,
+        "observed_max": 182.4
+      },
+      "wer": null,
+      "cer": null
+    },
+    {
+      "buffer_ms": 2000,
+      "total_windows": 6,
+      "redundancy_ratio": 4.0,
+      "decode_latency_ms": {
+        "mean": 771.7,
+        "median": 773.3,
+        "p95": 778.1,
+        "min": 760.0,
+        "max": 778.1,
+        "std": 6.4,
+        "cv": 0.008
+      },
+      "rtf": {
+        "mean": 0.663
+      },
+      "backlog_ratio_p95": 1.56,
+      "backlog_miss_rate_pct": 100.0,
+      "cpu_percent": {
+        "mean": 0.0,
+        "observed_max": 0.0
+      },
+      "rss_mb": {
+        "mean": 182.8,
+        "observed_max": 182.9
+      },
+      "wer": null,
+      "cer": null
+    }
+  ],
+  "tradeoff": "No single 'optimal' rolling buffer. Tradeoffs by metric:\n  Best RTF (efficiency):      2000ms (RTF=0.663)\n  Lowest mean latency:         1000ms (651ms)\n  Best backlog ratio (P95):    2000ms (1.56)\n  Lowest redundancy:           1000ms (2.0x)\nThe appropriate rolling buffer depends on application requirements (accuracy vs latency vs compute cost).",
+  "methodology_notes": "This benchmark evaluates rolling window STT inference. Each rolling window is an independent STT request. NO transcript merging, NO stabilization, NO hypothesis revision. Words are assigned to windows by midpoint: midpoint = (start + end) / 2. WER/CER are weighted averages of per-window values (weighted by reference word count). Silent windows (zero reference words) are excluded.\n\nBacklog ratio P95 = P95 decode latency / streaming interval. Backlog miss rate = % of decodes exceeding the streaming interval. If backlog_ratio_p95 > 1.0, the system cannot sustain realtime streaming for 5% of decodes. Redundancy ratio = buffer_size / interval (derived, not measured).",
+  "limitations": [
+    "NO transcript merging — windows are evaluated independently.",
+    "NO transcript stabilization — no multi-hypothesis refinement.",
+    "NO incremental decoding — no partial hypothesis updates.",
+    "NO LLM integration — measures STT only.",
+    "NO VAD simulation — audio is pre-trimmed; real streaming has VAD delay.",
+    "Offline simulation only — does not measure network or UI latency.",
+    "Single streaming interval tested; changing the interval may shift tradeoffs.",
+    "CPU utilization is sampled (psutil before/after inference) and is approximate.",
+    "RSS is observed resident memory during sampling, not peak memory."
+  ]
+}
