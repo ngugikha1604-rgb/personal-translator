@@ -179,9 +179,8 @@ def benchmark_chunk_size(
             chunk_duration_ms = chunk_duration_s * 1000
             first_result_delay_ms = chunk_duration_ms + latency_ms
             rtf = latency_ms / chunk_duration_ms if chunk_duration_ms > 0 else 0
-            lat_per_sec = latency_ms / chunk_duration_s if chunk_duration_s > 0 else 0
             cpu_avg = (cpu_before + cpu_after) / 2
-            rss_peak = max(rss_before, rss_after)
+            rss_observed = max(rss_before, rss_after)
 
             all_results.append({
                 "chunk_ms": chunk_ms,
@@ -190,10 +189,9 @@ def benchmark_chunk_size(
                 "run": run_idx,
                 "latency_ms": round(latency_ms, 2),
                 "first_result_delay_ms": round(first_result_delay_ms, 2),
-                "latency_per_second_audio": round(lat_per_sec, 2),
                 "rtf": round(rtf, 4),
                 "cpu_percent": round(cpu_avg, 1),
-                "rss_mb": round(rss_peak, 1),
+                "rss_observed_mb": round(rss_observed, 1),
             })
 
             time.sleep(SLEEP_BETWEEN_CHUNKS)
@@ -258,9 +256,9 @@ def run_benchmark(audio_float32: np.ndarray, runs: int, chunk_sizes: list):
         mn_cpu = mean(cpus) if cpus else 0
         pk_cpu = max(cpus) if cpus else 0
 
-        rsses = [r["rss_mb"] for r in rows]
+        rsses = [r["rss_observed_mb"] for r in rows]
         mn_rss = mean(rsses) if rsses else 0
-        pk_rss = max(rsses) if rsses else 0
+        mx_rss = max(rsses) if rsses else 0
 
         cs_sec = cs / 1000.0
         total_chunks = len([r for r in rows if r["run"] == 0])  # chunks per run
@@ -286,36 +284,25 @@ def run_benchmark(audio_float32: np.ndarray, runs: int, chunk_sizes: list):
                 "p95": round(d_p95, 1),
             },
             "rtf": {"mean": round(mn_rtf, 3)},
-            "cpu": {"mean": round(mn_cpu, 1), "peak": round(pk_cpu, 1)},
-            "rss_mb": {"mean": round(mn_rss, 1), "peak": round(pk_rss, 1)},
+            "cpu": {"mean": round(mn_cpu, 1), "observed_max": round(pk_cpu, 1)},
+            "rss_observed_mb": {"mean": round(mn_rss, 1), "observed_max": round(mx_rss, 1)},
         })
 
         print(f"    n={total_chunks}  delay={d_mn:.0f}ms  mean={mn:.0f}ms  "
-              f"p95={p95:.0f}ms  RTF={mn_rtf:.3f}  CPU={mn_cpu:.0f}%")
+              f"p95={p95:.0f}ms  RTF={mn_rtf:.3f}  "
+              f"approx_cpu={mn_cpu:.0f}%")
         time.sleep(SLEEP_BETWEEN_CONFIGS)
 
     # ── Tradeoff summary (NO winner) ──
     # The benchmark provides data; the application selects the tradeoff.
     # Smaller chunks → lower first_result_delay but more decodes and worse RTF.
     # Larger chunks → better efficiency but higher delay.
-    tradeoff_rows = []
-    for cs in config_summaries:
-        tradeoff_rows.append(
-            f"  {cs['chunk_ms']:>5d}ms  "
-            f"delay={cs['first_result_delay_ms']['mean']:>6.0f}ms  "
-            f"latency={cs['latency_ms']['mean']:>5.0f}ms  "
-            f"RTF={cs['rtf']['mean']:.3f}  "
-            f"decodes={cs['total_decodes_per_run']:>3d} ({cs['decodes_per_minute']:.0f}/min)  "
-            f"CPU={cs['cpu']['mean']:.0f}%"
-        )
-
     tradeoff_block = (
         "No single 'optimal' chunk size. Tradeoffs by metric:\n"
         + "\n".join([
             f"  Lowest first_result_delay:  {min(config_summaries, key=lambda c: c['first_result_delay_ms']['mean'])['chunk_ms']}ms",
             f"  Lowest decode latency:      {min(config_summaries, key=lambda c: c['latency_ms']['mean'])['chunk_ms']}ms",
             f"  Best RTF (efficiency):      {min(config_summaries, key=lambda c: c['rtf']['mean'])['chunk_ms']}ms",
-            f"  Lowest CPU load:            {min(config_summaries, key=lambda c: c['cpu']['mean'])['chunk_ms']}ms",
             f"  Fewest decodes/min:         {max(config_summaries, key=lambda c: c['chunk_ms'])['chunk_ms']}ms",
         ]) + "\n" + (
             "Decision depends on application requirements (latency vs throughput)."
@@ -342,7 +329,11 @@ def run_benchmark(audio_float32: np.ndarray, runs: int, chunk_sizes: list):
             "This benchmark measures only independent chunk inference cost. "
             "It does NOT simulate rolling buffers, incremental decoding, "
             "context accumulation, partial hypothesis revision, or "
-            "transcript stabilization. Those are evaluated in separate benchmarks."
+            "transcript stabilization. Those are evaluated in separate benchmarks.\n\n"
+            "RTF (Real-Time Factor) measures computational efficiency. "
+            "During fixed-interval streaming, RTF can also be interpreted as "
+            "the fraction of each streaming interval consumed by inference. "
+            "Therefore a separate Occupancy metric is unnecessary."
         ),
         "limitations": [
             "NO rolling buffer — chunks are independent, not accumulated.",
@@ -351,7 +342,10 @@ def run_benchmark(audio_float32: np.ndarray, runs: int, chunk_sizes: list):
             "NO partial hypothesis revision — no mid-utterance updates.",
             "NO LLM integration — measures STT only, not full pipeline.",
             "NO VAD simulation — audio is pre-trimmed; real streaming has VAD delay.",
-            "CPU/RSS measurements are approximate (psutil sampling).",
+            "CPU utilization is sampled using psutil (before/after inference) "
+            "and should be interpreted as approximate, not continuous profiling.",
+            "rss_observed_mb is the observed resident memory during sampling, "
+            "NOT peak memory usage. True peak would require continuous monitoring.",
             "Single audio clip — results may vary with different speech content.",
         ],
     }
@@ -370,24 +364,25 @@ def run_benchmark(audio_float32: np.ndarray, runs: int, chunk_sizes: list):
     print(f"  Saved: {report_path}")
 
     # ── Console table ──
-    print(f"\n  {'=' * 85}")
+    print(f"\n  {'=' * 95}")
     print(f"  Streaming Chunk Size Benchmark Summary")
-    print(f"  {'=' * 85}")
-    header = (f"  {'Chunk':>7s} {'Mean':>8s} {'Median':>8s} {'P95':>8s} "
+    print(f"  {'=' * 95}")
+    header = (f"  {'Chunk':>7s} {'Mean':>8s} {'Delay':>8s} {'P95':>8s} "
               f"{'RTF':>8s} {'CPU%':>7s} {'RSS':>7s} {'Dec/min':>8s}")
     print(header)
     print(f"  {'-' * len(header)}")
     for cs in config_summaries:
         l = cs["latency_ms"]
-        print(f"  {cs['chunk_ms']:>5d}ms {l['mean']:>8.1f} {l['median']:>8.1f} "
+        d = cs["first_result_delay_ms"]
+        print(f"  {cs['chunk_ms']:>5d}ms {l['mean']:>8.1f} {d['mean']:>8.1f} "
               f"{l['p95']:>8.1f} {cs['rtf']['mean']:>8.3f} "
-              f"{cs['cpu']['mean']:>6.1f}% {cs['rss_mb']['mean']:>6.1f} "
+              f"{cs['cpu']['mean']:>6.1f}% "
+              f"{cs['rss_observed_mb']['mean']:>6.1f} "
               f"{cs['decodes_per_minute']:>8.1f}")
-    print(f"  Tradeoff summary:")
-    print(f"    Lowest delay:  {min(config_summaries, key=lambda c: c['first_result_delay_ms']['mean'])['chunk_ms']}ms")
-    print(f"    Best RTF:      {min(config_summaries, key=lambda c: c['rtf']['mean'])['chunk_ms']}ms")
-    print(f"    Lowest CPU:    {min(config_summaries, key=lambda c: c['cpu']['mean'])['chunk_ms']}ms")
-    print(f"    Decodes/min:   {config_summaries[0]['decodes_per_minute']:.0f} — {config_summaries[-1]['decodes_per_minute']:.0f}")
+    print(f"  Tradeoff summary (no CPU recommendation — CPU values are approximate):")
+    print(f"    Lowest delay:       {min(config_summaries, key=lambda c: c['first_result_delay_ms']['mean'])['chunk_ms']}ms")
+    print(f"    Best RTF:           {min(config_summaries, key=lambda c: c['rtf']['mean'])['chunk_ms']}ms")
+    print(f"    Decodes/min range:  {config_summaries[0]['decodes_per_minute']:.0f} — {config_summaries[-1]['decodes_per_minute']:.0f}")
     print()
 
 

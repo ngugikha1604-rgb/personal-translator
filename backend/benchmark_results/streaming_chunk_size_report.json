@@ -9,86 +9,279 @@
     "vad_filter": false,
     "language": "en",
     "chunk_sizes_ms": [
+      250,
+      500,
+      750,
       1000,
-      2000
+      1500,
+      2000,
+      3000,
+      4000
     ],
-    "runs_per_config": 1,
+    "runs_per_config": 3,
     "warmup_runs": 2
   },
   "chunk_results": [
     {
-      "chunk_ms": 1000,
-      "total_chunks_per_run": 4,
-      "total_decodes_per_run": 4,
-      "decodes_per_minute": 60.0,
+      "chunk_ms": 250,
+      "total_chunks_per_run": 40,
+      "total_decodes_per_run": 40,
+      "decodes_per_minute": 240.0,
       "latency_ms": {
-        "mean": 1154.5,
-        "median": 1154.5,
-        "p95": 1166.8,
-        "min": 1142.3,
-        "max": 1166.8,
-        "std": 13.1,
-        "cv": 0.011
+        "mean": 747.0,
+        "median": 819.2,
+        "p95": 1176.2,
+        "min": 391.9,
+        "max": 1445.7,
+        "std": 238.4,
+        "cv": 0.319
       },
       "first_result_delay_ms": {
-        "mean": 2154.5,
-        "median": 2154.5,
-        "p95": 2166.8
+        "mean": 997.0,
+        "median": 1069.2,
+        "p95": 1426.2
       },
       "rtf": {
-        "mean": 1.155
+        "mean": 2.988
       },
       "cpu": {
         "mean": 0.0,
-        "peak": 0.0
+        "observed_max": 0.0
       },
-      "rss_mb": {
-        "mean": 186.7,
-        "peak": 186.7
+      "rss_observed_mb": {
+        "mean": 334.4,
+        "observed_max": 334.5
+      }
+    },
+    {
+      "chunk_ms": 500,
+      "total_chunks_per_run": 20,
+      "total_decodes_per_run": 20,
+      "decodes_per_minute": 120.0,
+      "latency_ms": {
+        "mean": 817.3,
+        "median": 812.9,
+        "p95": 868.1,
+        "min": 790.7,
+        "max": 872.9,
+        "std": 17.3,
+        "cv": 0.021
+      },
+      "first_result_delay_ms": {
+        "mean": 1317.3,
+        "median": 1312.9,
+        "p95": 1368.1
+      },
+      "rtf": {
+        "mean": 1.635
+      },
+      "cpu": {
+        "mean": 0.0,
+        "observed_max": 0.0
+      },
+      "rss_observed_mb": {
+        "mean": 335.7,
+        "observed_max": 335.8
+      }
+    },
+    {
+      "chunk_ms": 750,
+      "total_chunks_per_run": 14,
+      "total_decodes_per_run": 14,
+      "decodes_per_minute": 80.0,
+      "latency_ms": {
+        "mean": 777.6,
+        "median": 815.2,
+        "p95": 880.3,
+        "min": 431.4,
+        "max": 979.7,
+        "std": 119.1,
+        "cv": 0.153
+      },
+      "first_result_delay_ms": {
+        "mean": 1527.6,
+        "median": 1565.2,
+        "p95": 1630.3
+      },
+      "rtf": {
+        "mean": 1.037
+      },
+      "cpu": {
+        "mean": 0.0,
+        "observed_max": 0.0
+      },
+      "rss_observed_mb": {
+        "mean": 336.0,
+        "observed_max": 336.1
+      }
+    },
+    {
+      "chunk_ms": 1000,
+      "total_chunks_per_run": 10,
+      "total_decodes_per_run": 10,
+      "decodes_per_minute": 60.0,
+      "latency_ms": {
+        "mean": 821.4,
+        "median": 820.2,
+        "p95": 849.7,
+        "min": 794.4,
+        "max": 850.4,
+        "std": 17.8,
+        "cv": 0.022
+      },
+      "first_result_delay_ms": {
+        "mean": 1821.4,
+        "median": 1820.2,
+        "p95": 1849.7
+      },
+      "rtf": {
+        "mean": 0.821
+      },
+      "cpu": {
+        "mean": 0.0,
+        "observed_max": 0.0
+      },
+      "rss_observed_mb": {
+        "mean": 336.2,
+        "observed_max": 336.2
+      }
+    },
+    {
+      "chunk_ms": 1500,
+      "total_chunks_per_run": 7,
+      "total_decodes_per_run": 7,
+      "decodes_per_minute": 40.0,
+      "latency_ms": {
+        "mean": 662.8,
+        "median": 762.2,
+        "p95": 843.9,
+        "min": 410.5,
+        "max": 845.1,
+        "std": 169.1,
+        "cv": 0.255
+      },
+      "first_result_delay_ms": {
+        "mean": 2162.8,
+        "median": 2262.2,
+        "p95": 2343.9
+      },
+      "rtf": {
+        "mean": 0.442
+      },
+      "cpu": {
+        "mean": 0.0,
+        "observed_max": 0.0
+      },
+      "rss_observed_mb": {
+        "mean": 336.3,
+        "observed_max": 336.3
       }
     },
     {
       "chunk_ms": 2000,
-      "total_chunks_per_run": 2,
-      "total_decodes_per_run": 2,
+      "total_chunks_per_run": 5,
+      "total_decodes_per_run": 5,
       "decodes_per_minute": 30.0,
       "latency_ms": {
-        "mean": 1454.2,
-        "median": 1454.2,
-        "p95": 1575.4,
-        "min": 1332.9,
-        "max": 1575.4,
-        "std": 171.5,
-        "cv": 0.118
+        "mean": 828.1,
+        "median": 825.7,
+        "p95": 857.5,
+        "min": 806.0,
+        "max": 857.5,
+        "std": 14.8,
+        "cv": 0.018
       },
       "first_result_delay_ms": {
-        "mean": 3454.2,
-        "median": 3454.2,
-        "p95": 3575.4
+        "mean": 2828.1,
+        "median": 2825.7,
+        "p95": 2857.5
       },
       "rtf": {
-        "mean": 0.727
+        "mean": 0.414
       },
       "cpu": {
         "mean": 0.0,
-        "peak": 0.0
+        "observed_max": 0.0
       },
-      "rss_mb": {
-        "mean": 187.1,
-        "peak": 187.1
+      "rss_observed_mb": {
+        "mean": 337.2,
+        "observed_max": 337.2
+      }
+    },
+    {
+      "chunk_ms": 3000,
+      "total_chunks_per_run": 4,
+      "total_decodes_per_run": 4,
+      "decodes_per_minute": 20.0,
+      "latency_ms": {
+        "mean": 838.1,
+        "median": 832.1,
+        "p95": 892.4,
+        "min": 799.7,
+        "max": 892.4,
+        "std": 25.9,
+        "cv": 0.031
+      },
+      "first_result_delay_ms": {
+        "mean": 3838.1,
+        "median": 3832.1,
+        "p95": 3892.4
+      },
+      "rtf": {
+        "mean": 0.279
+      },
+      "cpu": {
+        "mean": 0.0,
+        "observed_max": 0.0
+      },
+      "rss_observed_mb": {
+        "mean": 337.2,
+        "observed_max": 337.2
+      }
+    },
+    {
+      "chunk_ms": 4000,
+      "total_chunks_per_run": 3,
+      "total_decodes_per_run": 3,
+      "decodes_per_minute": 15.0,
+      "latency_ms": {
+        "mean": 847.1,
+        "median": 845.9,
+        "p95": 884.9,
+        "min": 815.4,
+        "max": 884.9,
+        "std": 22.0,
+        "cv": 0.026
+      },
+      "first_result_delay_ms": {
+        "mean": 4847.1,
+        "median": 4845.9,
+        "p95": 4884.9
+      },
+      "rtf": {
+        "mean": 0.212
+      },
+      "cpu": {
+        "mean": 0.0,
+        "observed_max": 0.0
+      },
+      "rss_observed_mb": {
+        "mean": 337.2,
+        "observed_max": 337.2
       }
     }
   ],
-  "tradeoff": "No single 'optimal' chunk size. Tradeoffs by metric:\n  Lowest first_result_delay:  1000ms\n  Lowest decode latency:      1000ms\n  Best RTF (efficiency):      2000ms\n  Lowest CPU load:            1000ms\n  Fewest decodes/min:         2000ms\nDecision depends on application requirements (latency vs throughput).",
-  "methodology_notes": "This benchmark measures only independent chunk inference cost. It does NOT simulate rolling buffers, incremental decoding, context accumulation, partial hypothesis revision, or transcript stabilization. Those are evaluated in separate benchmarks.",
+  "tradeoff": "No single 'optimal' chunk size. Tradeoffs by metric:\n  Lowest first_result_delay:  250ms\n  Lowest decode latency:      1500ms\n  Best RTF (efficiency):      4000ms\n  Fewest decodes/min:         4000ms\nDecision depends on application requirements (latency vs throughput).",
+  "methodology_notes": "This benchmark measures only independent chunk inference cost. It does NOT simulate rolling buffers, incremental decoding, context accumulation, partial hypothesis revision, or transcript stabilization. Those are evaluated in separate benchmarks.\n\nRTF (Real-Time Factor) measures computational efficiency. During fixed-interval streaming, RTF can also be interpreted as the fraction of each streaming interval consumed by inference. Therefore a separate Occupancy metric is unnecessary.",
   "limitations": [
-    "NO rolling buffer â€” chunks are independent, not accumulated.",
-    "NO transcript stabilization â€” raw per-chunk outputs, no merging logic.",
-    "NO incremental decoding â€” each chunk is a fresh STT request.",
-    "NO partial hypothesis revision â€” no mid-utterance updates.",
-    "NO LLM integration â€” measures STT only, not full pipeline.",
-    "NO VAD simulation â€” audio is pre-trimmed; real streaming has VAD delay.",
-    "CPU/RSS measurements are approximate (psutil sampling).",
-    "Single audio clip â€” results may vary with different speech content."
+    "NO rolling buffer — chunks are independent, not accumulated.",
+    "NO transcript stabilization — raw per-chunk outputs, no merging logic.",
+    "NO incremental decoding — each chunk is a fresh STT request.",
+    "NO partial hypothesis revision — no mid-utterance updates.",
+    "NO LLM integration — measures STT only, not full pipeline.",
+    "NO VAD simulation — audio is pre-trimmed; real streaming has VAD delay.",
+    "CPU utilization is sampled using psutil (before/after inference) and should be interpreted as approximate, not continuous profiling.",
+    "rss_observed_mb is the observed resident memory during sampling, NOT peak memory usage. True peak would require continuous monitoring.",
+    "Single audio clip — results may vary with different speech content."
   ]
 }
