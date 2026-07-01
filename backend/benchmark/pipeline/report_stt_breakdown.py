@@ -16,6 +16,8 @@ import os
 import sys
 from statistics import mean, median
 
+import numpy as np
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 INPUT_PATH = os.path.join(
@@ -34,7 +36,7 @@ def compute_stats(values: list) -> dict:
     return {
         "mean": round(mean(s), 1),
         "median": round(median(s), 1),
-        "p95": round(s[int(n * 0.95)], 1),
+        "p95": round(float(np.percentile(s, 95)), 1),
         "min": round(min(s), 1),
         "max": round(max(s), 1),
     }
@@ -54,8 +56,25 @@ def main():
     ok = len(ok_rows)
     failed = total - ok
 
+    # Provider metadata from first row (constant across the run)
+    if ok_rows:
+        first = ok_rows[0]
+        provider_info = {
+            "provider": first.get("provider", None),
+            "model": first.get("model", None),
+            "device": first.get("device", None),
+            "compute_type": first.get("compute_type", None),
+        }
+    else:
+        provider_info = {
+            "provider": None,
+            "model": None,
+            "device": None,
+            "compute_type": None,
+        }
+
     stages = ["audio_load_ms", "audio_prepare_ms", "api_request_ms",
-              "response_parse_ms", "total_ms"]
+              "inference_ms", "response_parse_ms", "total_ms"]
 
     # ── Per-stage stats ──
     stage_stats = {}
@@ -101,6 +120,8 @@ def main():
         "total_runs": total,
         "successful_runs": ok,
         "failed_runs": failed,
+        **provider_info,
+        "stage_note": "For local providers, 'api_request_ms' measures in-process model inference time, not a network API call. See 'inference_ms' for the same value under a clearer name.",
         "stage_timing_ms": stage_stats,
         "stage_percentage_of_total": stage_pcts,
         "dominant_bottleneck": {
@@ -127,6 +148,10 @@ def main():
     print(f"\n{'=' * 60}")
     print(f"  STT Breakdown Report")
     print(f"{'=' * 60}")
+    print(f"  Provider: {provider_info['provider']}  "
+          f"model={provider_info['model']}  "
+          f"device={provider_info['device']}  "
+          f"compute={provider_info['compute_type']}")
     print(f"  Runs: {ok} successful, {failed} failed")
 
     print(f"\n  — Stage timing (ms) —")

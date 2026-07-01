@@ -27,10 +27,13 @@ class FasterWhisperProvider(STTProvider):
         device: str | None = None,
         compute_type: str | None = None,
     ) -> None:
+        self.model_size = model_size or FASTER_WHISPER_MODEL
+        self.device = device or FASTER_WHISPER_DEVICE
+        self.compute_type = compute_type or FASTER_WHISPER_COMPUTE_TYPE
         self._model = WhisperModel(
-            model_size or FASTER_WHISPER_MODEL,
-            device=device or FASTER_WHISPER_DEVICE,
-            compute_type=compute_type or FASTER_WHISPER_COMPUTE_TYPE,
+            self.model_size,
+            device=self.device,
+            compute_type=self.compute_type,
             cpu_threads=FASTER_WHISPER_CPU_THREADS,
         )
 

@@ -10,45 +10,51 @@
     "language": "en",
     "streaming_interval_ms": 500,
     "buffer_sizes_ms": [
-      500
+      500,
+      1000,
+      1500,
+      2000,
+      3000,
+      4000
     ],
     "warmup_runs": 2,
     "seed": 42,
-    "dataset_source": "custom",
-    "timestamp_source": "Word-level JSON if provided via --transcript; for LibriSpeech, Whisper-generated word alignments (approximate, not ground truth). Only transcript text is considered ground truth."
+    "dataset_source": "librispeech",
+    "num_utterances": 300,
+    "timestamp_source": "Whisper-generated word alignments (approximate pseudo-alignments, only transcript text is ground truth)"
   },
-  "has_ground_truth": false,
+  "has_ground_truth": true,
   "results": [
     {
       "buffer_ms": 500,
-      "total_windows": 6,
-      "total_reference_words": 0,
+      "total_windows": 4304,
+      "total_reference_words": 5900,
       "redundancy_ratio": 1.0,
       "decode_latency_ms": {
-        "mean": 1472.3,
-        "median": 1476.7,
-        "p95": 1532.2,
-        "p99": 1532.2,
-        "min": 1401.8,
-        "max": 1532.2,
-        "std": 46.8,
-        "cv": 0.032
+        "mean": 732.8,
+        "median": 735.6,
+        "p95": 847.6,
+        "p99": 860.0,
+        "min": 1.7,
+        "max": 3626.4,
+        "std": 76.2,
+        "cv": 0.103
       },
       "pipeline_details": {
         "slice_ms": {
-          "mean": 0.047
+          "mean": 0.018
         },
         "convert_ms": {
           "mean": 0.0
         },
         "decode_ms": {
-          "mean": 1472.3
+          "mean": 732.8
         },
         "postprocess_ms": {
-          "mean": 0.078
+          "mean": 0.07
         },
         "total_pipeline_ms": {
-          "mean": 1478.3
+          "mean": 734.8
         }
       },
       "pipeline_pct": {
@@ -58,42 +64,334 @@
         "postprocess_pct": 0.0
       },
       "rtf": {
-        "mean": 2.945
+        "mean": 1.858
       },
       "throughput": {
-        "windows_per_second": 0.68,
-        "audio_seconds_per_second": 0.338,
-        "processing_wall_seconds": 8.87,
-        "benchmark_wall_seconds": 9.18
+        "windows_per_second": 1.61,
+        "audio_seconds_per_second": 0.768,
+        "processing_wall_seconds": 3183.03,
+        "benchmark_wall_seconds": 3400.41
       },
-      "backlog_ratio_p95": 3.06,
-      "backlog_miss_rate_pct": 100.0,
+      "backlog_ratio_p95": 1.7,
+      "backlog_miss_rate_pct": 71.9,
       "cpu_percent": {
-        "mean": 336.8,
-        "observed_max": 366.0
+        "mean": 390.7,
+        "observed_max": 486.2
       },
       "rss_mb": {
-        "mean": 328.9,
-        "observed_max": 329.1
+        "mean": 256.3,
+        "observed_max": 473.7
       },
-      "wer": null,
-      "cer": null
+      "wer": 1.1463,
+      "cer": 1.0864
+    },
+    {
+      "buffer_ms": 1000,
+      "total_windows": 4304,
+      "total_reference_words": 5900,
+      "redundancy_ratio": 2.0,
+      "decode_latency_ms": {
+        "mean": 725.7,
+        "median": 736.4,
+        "p95": 841.9,
+        "p99": 847.9,
+        "min": 1.3,
+        "max": 4425.1,
+        "std": 87.0,
+        "cv": 0.112
+      },
+      "pipeline_details": {
+        "slice_ms": {
+          "mean": 0.019
+        },
+        "convert_ms": {
+          "mean": 0.0
+        },
+        "decode_ms": {
+          "mean": 725.7
+        },
+        "postprocess_ms": {
+          "mean": 0.085
+        },
+        "total_pipeline_ms": {
+          "mean": 727.8
+        }
+      },
+      "pipeline_pct": {
+        "slice_pct": 0.0,
+        "convert_pct": 0.0,
+        "decode_pct": 100.0,
+        "postprocess_pct": 0.0
+      },
+      "rtf": {
+        "mean": 1.209
+      },
+      "throughput": {
+        "windows_per_second": 1.62,
+        "audio_seconds_per_second": 0.776,
+        "processing_wall_seconds": 3136.37,
+        "benchmark_wall_seconds": 3353.85
+      },
+      "backlog_ratio_p95": 1.68,
+      "backlog_miss_rate_pct": 71.2,
+      "cpu_percent": {
+        "mean": 390.0,
+        "observed_max": 3126.4
+      },
+      "rss_mb": {
+        "mean": 256.1,
+        "observed_max": 473.7
+      },
+      "wer": 1.3822,
+      "cer": 1.4448
+    },
+    {
+      "buffer_ms": 1500,
+      "total_windows": 4304,
+      "total_reference_words": 5900,
+      "redundancy_ratio": 3.0,
+      "decode_latency_ms": {
+        "mean": 742.5,
+        "median": 751.3,
+        "p95": 878.6,
+        "p99": 906.6,
+        "min": 1.5,
+        "max": 4826.9,
+        "std": 93.3,
+        "cv": 0.119
+      },
+      "pipeline_details": {
+        "slice_ms": {
+          "mean": 0.02
+        },
+        "convert_ms": {
+          "mean": 0.0
+        },
+        "decode_ms": {
+          "mean": 742.5
+        },
+        "postprocess_ms": {
+          "mean": 0.102
+        },
+        "total_pipeline_ms": {
+          "mean": 744.6
+        }
+      },
+      "pipeline_pct": {
+        "slice_pct": 0.0,
+        "convert_pct": 0.0,
+        "decode_pct": 100.0,
+        "postprocess_pct": 0.0
+      },
+      "rtf": {
+        "mean": 1.047
+      },
+      "throughput": {
+        "windows_per_second": 1.59,
+        "audio_seconds_per_second": 0.762,
+        "processing_wall_seconds": 3211.06,
+        "benchmark_wall_seconds": 3428.55
+      },
+      "backlog_ratio_p95": 1.76,
+      "backlog_miss_rate_pct": 73.4,
+      "cpu_percent": {
+        "mean": 389.7,
+        "observed_max": 414.8
+      },
+      "rss_mb": {
+        "mean": 255.9,
+        "observed_max": 473.7
+      },
+      "wer": 1.9959,
+      "cer": 2.2779
+    },
+    {
+      "buffer_ms": 2000,
+      "total_windows": 4304,
+      "total_reference_words": 5900,
+      "redundancy_ratio": 4.0,
+      "decode_latency_ms": {
+        "mean": 747.8,
+        "median": 756.9,
+        "p95": 877.0,
+        "p99": 888.6,
+        "min": 1.7,
+        "max": 2848.8,
+        "std": 91.3,
+        "cv": 0.118
+      },
+      "pipeline_details": {
+        "slice_ms": {
+          "mean": 0.019
+        },
+        "convert_ms": {
+          "mean": 0.0
+        },
+        "decode_ms": {
+          "mean": 747.8
+        },
+        "postprocess_ms": {
+          "mean": 0.116
+        },
+        "total_pipeline_ms": {
+          "mean": 749.9
+        }
+      },
+      "pipeline_pct": {
+        "slice_pct": 0.0,
+        "convert_pct": 0.0,
+        "decode_pct": 100.0,
+        "postprocess_pct": 0.0
+      },
+      "rtf": {
+        "mean": 0.969
+      },
+      "throughput": {
+        "windows_per_second": 1.56,
+        "audio_seconds_per_second": 0.747,
+        "processing_wall_seconds": 3238.67,
+        "benchmark_wall_seconds": 3456.1
+      },
+      "backlog_ratio_p95": 1.75,
+      "backlog_miss_rate_pct": 75.5,
+      "cpu_percent": {
+        "mean": 393.6,
+        "observed_max": 435.1
+      },
+      "rss_mb": {
+        "mean": 255.6,
+        "observed_max": 475.6
+      },
+      "wer": 2.3883,
+      "cer": 2.7676
+    },
+    {
+      "buffer_ms": 3000,
+      "total_windows": 4304,
+      "total_reference_words": 5900,
+      "redundancy_ratio": 6.0,
+      "decode_latency_ms": {
+        "mean": 759.1,
+        "median": 765.8,
+        "p95": 901.8,
+        "p99": 918.8,
+        "min": 1.7,
+        "max": 4560.5,
+        "std": 97.5,
+        "cv": 0.122
+      },
+      "pipeline_details": {
+        "slice_ms": {
+          "mean": 0.019
+        },
+        "convert_ms": {
+          "mean": 0.0
+        },
+        "decode_ms": {
+          "mean": 759.1
+        },
+        "postprocess_ms": {
+          "mean": 0.148
+        },
+        "total_pipeline_ms": {
+          "mean": 761.2
+        }
+      },
+      "pipeline_pct": {
+        "slice_pct": 0.0,
+        "convert_pct": 0.0,
+        "decode_pct": 100.0,
+        "postprocess_pct": 0.0
+      },
+      "rtf": {
+        "mean": 0.893
+      },
+      "throughput": {
+        "windows_per_second": 1.55,
+        "audio_seconds_per_second": 0.742,
+        "processing_wall_seconds": 3323.57,
+        "benchmark_wall_seconds": 3541.04
+      },
+      "backlog_ratio_p95": 1.8,
+      "backlog_miss_rate_pct": 78.8,
+      "cpu_percent": {
+        "mean": 393.1,
+        "observed_max": 1881.3
+      },
+      "rss_mb": {
+        "mean": 255.5,
+        "observed_max": 473.8
+      },
+      "wer": 2.9991,
+      "cer": 3.5866
+    },
+    {
+      "buffer_ms": 4000,
+      "total_windows": 4304,
+      "total_reference_words": 5900,
+      "redundancy_ratio": 8.0,
+      "decode_latency_ms": {
+        "mean": 754.3,
+        "median": 760.8,
+        "p95": 897.5,
+        "p99": 917.4,
+        "min": 1.7,
+        "max": 3589.6,
+        "std": 98.4,
+        "cv": 0.125
+      },
+      "pipeline_details": {
+        "slice_ms": {
+          "mean": 0.019
+        },
+        "convert_ms": {
+          "mean": 0.0
+        },
+        "decode_ms": {
+          "mean": 754.3
+        },
+        "postprocess_ms": {
+          "mean": 0.166
+        },
+        "total_pipeline_ms": {
+          "mean": 756.5
+        }
+      },
+      "pipeline_pct": {
+        "slice_pct": 0.0,
+        "convert_pct": 0.0,
+        "decode_pct": 100.0,
+        "postprocess_pct": 0.0
+      },
+      "rtf": {
+        "mean": 0.87
+      },
+      "throughput": {
+        "windows_per_second": 1.56,
+        "audio_seconds_per_second": 0.743,
+        "processing_wall_seconds": 3307.1,
+        "benchmark_wall_seconds": 3524.58
+      },
+      "backlog_ratio_p95": 1.79,
+      "backlog_miss_rate_pct": 79.3,
+      "cpu_percent": {
+        "mean": 393.8,
+        "observed_max": 1141.7
+      },
+      "rss_mb": {
+        "mean": 255.5,
+        "observed_max": 473.7
+      },
+      "wer": 3.2129,
+      "cer": 3.9464
     }
   ],
-  "tradeoff": "No single 'optimal' rolling buffer. Tradeoffs by metric:\n  Best RTF (efficiency):      500ms (RTF=2.945)\n  Lowest mean latency:         500ms (1472ms)\n  Best backlog ratio (P95):    500ms (3.06)\n  Lowest redundancy:           500ms (1.0x)\nThe appropriate rolling buffer depends on application requirements (accuracy vs latency vs compute cost).",
-  "methodology_notes": "This benchmark evaluates rolling audio buffer effects for STT inference. It uses a pre-loaded float32 numpy array as the rolling buffer — each window is a direct slice view (no WAV reconstruction, no file I/O per decode). Each rolling window is an independent STT request. NO transcript merging, NO stabilization, NO hypothesis revision, NO incremental decoding. Words are assigned to windows by midpoint: midpoint = (start + end) / 2. WER/CER are weighted averages of per-window values (weighted by reference word count). Silent windows (zero reference words) are excluded.\nRolling windows overlap; therefore reference words may be duplicated across windows. Weighted WER measures recognition quality per window and is NOT directly comparable to conventional full-audio corpus WER. It is intended for relative comparison between buffer sizes under identical methodology.\n\nPipeline timing breakdown:\n  slice_ms — time to slice the rolling buffer (numpy array view).\n  convert_ms — time to prepare input (negligible for float32).\n  decode_ms — Whisper model inference.\n  postprocess_ms — time to materialise segments and compute text/WER.\n  total_pipeline_ms — wall-clock time for the entire window processing.\n\nBacklog ratio P95 = P95 decode latency / streaming interval. Backlog miss rate = % of decodes exceeding the streaming interval. If backlog_ratio_p95 > 1.0, the system cannot sustain realtime streaming for 5% of decodes. Redundancy ratio = buffer_size / interval (derived, not measured).\n\nCPU utilization is computed as (process_time_delta / wall_time_delta) × 100. This is more reliable than psutil.cpu_percent(interval=0) which returns 0% for sub-second operations.\n\nRSS is monitored by a background thread that samples every ~5ms during decode. The maximum observed value (rss_mb_peak) is reported as rss_mb. Per-window rows also include rss_mb_before and rss_mb_after. Peak RSS is estimated by periodic sampling, NOT continuous OS-level tracing.",
+  "methodology_notes": "LibriSpeech provides utterance-level transcripts only. Word alignments are generated using Whisper word_timestamps=True. These are approximate pseudo-alignments, NOT manually annotated ground truth. Only transcript text is considered ground truth; window assignment depends on Whisper-generated alignments. Rolling windows overlap � reference words are duplicated across windows. Weighted WER measures per-window recognition quality and is intended for relative buffer-size comparison, NOT direct comparison with conventional full-audio corpus WER. Each utterance is benchmarked independently. Final report aggregates per buffer size across all utterances using _merge_runs. Rolling window methodology, WER/CER, and aggregation are unchanged.",
   "limitations": [
-    "NO transcript merging — windows are evaluated independently.",
-    "NO transcript stabilization — no multi-hypothesis refinement.",
-    "NO incremental decoding — no partial hypothesis updates.",
-    "NO LLM integration — measures STT only.",
-    "NO VAD simulation — audio is pre-trimmed; real streaming has VAD delay.",
-    "Offline simulation only — does not measure network or UI latency.",
-    "Single streaming interval tested; changing the interval may shift tradeoffs.",
-    "CPU utilization is computed from process_time deltas and is approximate for short operations.",
-    "Peak RSS is estimated by periodic sampling during decode, not continuous OS-level tracing.",
-    "Rolling buffer uses numpy array views — actual production buffer management overhead may differ.",
+    "LibriSpeech provides utterance-level transcripts only � word alignments are Whisper-generated, not ground truth.",
+    "Alignment accuracy depends on Whisper word_timestamps quality.",
+    "Results aggregated across utterances � per-utterance detail available in JSONL.",
     "Each rolling window is independently encoded and decoded. Encoder features are not reused between consecutive windows. Therefore measured latency represents independent inference rather than optimized incremental streaming.",
-    "Rolling windows overlap — reference words are duplicated across windows. Weighted WER measures per-window recognition quality and cannot be directly compared to conventional full-audio corpus WER. It is intended for relative buffer-size comparison only."
+    "Rolling windows overlap � reference words are duplicated across windows. Weighted WER is intended for relative buffer-size comparison only, not conventional corpus WER."
   ]
 }

@@ -1,8 +1,13 @@
 {
   "source": "stt_breakdown.jsonl",
-  "total_runs": 5,
-  "successful_runs": 5,
+  "total_runs": 150,
+  "successful_runs": 150,
   "failed_runs": 0,
+  "provider": "FasterWhisperProvider",
+  "model": "unknown",
+  "device": "unknown",
+  "compute_type": "unknown",
+  "stage_note": "For local providers, 'api_request_ms' measures in-process model inference time, not a network API call. See 'inference_ms' for the same value under a clearer name.",
   "stage_timing_ms": {
     "audio_load_ms": {
       "mean": 0.0,
@@ -19,11 +24,18 @@
       "max": 0.0
     },
     "api_request_ms": {
-      "mean": 9554.0,
-      "median": 10024.8,
-      "p95": 12847.4,
-      "min": 6123.8,
-      "max": 12847.4
+      "mean": 920.9,
+      "median": 920.2,
+      "p95": 1218.2,
+      "min": 371.1,
+      "max": 2463.1
+    },
+    "inference_ms": {
+      "mean": 920.9,
+      "median": 920.2,
+      "p95": 1218.2,
+      "min": 371.1,
+      "max": 2463.1
     },
     "response_parse_ms": {
       "mean": 0.0,
@@ -33,11 +45,11 @@
       "max": 0.0
     },
     "total_ms": {
-      "mean": 9554.0,
-      "median": 10024.8,
-      "p95": 12847.4,
-      "min": 6123.8,
-      "max": 12847.4
+      "mean": 920.9,
+      "median": 920.2,
+      "p95": 1218.2,
+      "min": 371.1,
+      "max": 2463.1
     }
   },
   "stage_percentage_of_total": {
@@ -62,6 +74,13 @@
       "min": 100.0,
       "max": 100.0
     },
+    "inference_ms": {
+      "mean": 100.0,
+      "median": 100.0,
+      "p95": 100.0,
+      "min": 100.0,
+      "max": 100.0
+    },
     "response_parse_ms": {
       "mean": 0.0,
       "median": 0.0,
@@ -77,6 +96,7 @@
       "api_request_ms": 100.0,
       "audio_load_ms": 0.0,
       "audio_prepare_ms": 0.0,
+      "inference_ms": 0.0,
       "response_parse_ms": 0.0
     }
   },

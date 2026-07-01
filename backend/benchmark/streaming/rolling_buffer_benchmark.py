@@ -52,6 +52,7 @@ import math
 from statistics import mean, median, stdev
 from io import BytesIO
 import wave
+import random
 
 import numpy as np
 
@@ -82,6 +83,7 @@ STREAMING_INTERVAL_S = STREAMING_INTERVAL_MS / 1000.0
 
 # Only buffer size varies between configurations
 BUFFER_SIZES_MS = [500, 1000, 1500, 2000, 3000, 4000]
+MAX_UTTERANCES = 300
 MODEL_NAME = "tiny.en"
 DEVICE = "cpu"
 COMPUTE_TYPE = "int8"
@@ -1287,6 +1289,10 @@ def main():
         if not utterances:
             print("ERROR: No valid LibriSpeech utterances found in", args.librispeech)
             sys.exit(1)
+        random.seed(args.seed)
+
+        if MAX_UTTERANCES is not None and len(utterances) > MAX_UTTERANCES:
+            utterances = random.sample(utterances, MAX_UTTERANCES)
         print(f"  LibriSpeech root: {args.librispeech}")
         print(f"  Discovered: {len(utterances)} utterances")
 
