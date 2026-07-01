@@ -10,7 +10,7 @@ Usage:
     python benchmark/pipeline/pipeline_trace.py --record              # capture + process live
     python benchmark/pipeline/pipeline_trace.py --wav path.wav        # process existing WAV
     python benchmark/pipeline/pipeline_trace.py --text "hello there"  # skip STT, analysis only
-
+    
 Output:
     benchmark_results/pipeline_trace.jsonl
 """

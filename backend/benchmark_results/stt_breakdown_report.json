@@ -4,9 +4,9 @@
   "successful_runs": 150,
   "failed_runs": 0,
   "provider": "FasterWhisperProvider",
-  "model": "unknown",
-  "device": "unknown",
-  "compute_type": "unknown",
+  "model": "tiny.en",
+  "device": "cpu",
+  "compute_type": "int8",
   "stage_note": "For local providers, 'api_request_ms' measures in-process model inference time, not a network API call. See 'inference_ms' for the same value under a clearer name.",
   "stage_timing_ms": {
     "audio_load_ms": {
@@ -24,18 +24,18 @@
       "max": 0.0
     },
     "api_request_ms": {
-      "mean": 920.9,
-      "median": 920.2,
-      "p95": 1218.2,
-      "min": 371.1,
-      "max": 2463.1
+      "mean": 665.4,
+      "median": 635.3,
+      "p95": 978.2,
+      "min": 354.8,
+      "max": 1971.5
     },
     "inference_ms": {
-      "mean": 920.9,
-      "median": 920.2,
-      "p95": 1218.2,
-      "min": 371.1,
-      "max": 2463.1
+      "mean": 665.4,
+      "median": 635.3,
+      "p95": 978.2,
+      "min": 354.8,
+      "max": 1971.5
     },
     "response_parse_ms": {
       "mean": 0.0,
@@ -45,11 +45,11 @@
       "max": 0.0
     },
     "total_ms": {
-      "mean": 920.9,
-      "median": 920.2,
-      "p95": 1218.2,
-      "min": 371.1,
-      "max": 2463.1
+      "mean": 665.4,
+      "median": 635.3,
+      "p95": 978.2,
+      "min": 354.8,
+      "max": 1971.5
     }
   },
   "stage_percentage_of_total": {

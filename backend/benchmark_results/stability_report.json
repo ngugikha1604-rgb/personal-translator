@@ -1,0 +1,56 @@
+{
+  "benchmark": "transcript_stability",
+  "streaming_interval_ms": 500,
+  "buffer_sizes_ms": [
+    1000
+  ],
+  "num_utterances": 1,
+  "configuration": {},
+  "aggregates": {
+    "1000": {
+      "buffer_ms": 1000,
+      "num_utterances": 1,
+      "spr_mean": 1.0,
+      "spr_p50": 1.0,
+      "spr_p95": 1.0,
+      "spr_p99": 1.0,
+      "spr_at_last_window_mean": 1.0,
+      "spr_at_last_window_p95": 1.0,
+      "wst_seconds_p50": 2.0,
+      "wst_seconds_p95": 2.0,
+      "wst_seconds_p99": 2.0,
+      "rev_pct_no_revisions": 100.0,
+      "rev_pct_one_revision": 0.0,
+      "rev_pct_multi_revision": 0.0,
+      "max_rollback_p50": 0.0,
+      "max_rollback_p95": 0.0,
+      "max_rollback_max": 0,
+      "rollback_frequency_mean": 0.0,
+      "rollback_frequency_p95": 0.0,
+      "tts_seconds_p50": 0.0,
+      "tts_seconds_p95": 0.0,
+      "tts_seconds_count": 1,
+      "convergence_window_mean": 3,
+      "total_churn_mean": 3,
+      "total_churn_p95": 3.0,
+      "revision_correctness_mean": 0.0,
+      "windows_per_utterance_mean": 4,
+      "words_per_utterance_mean": 3
+    }
+  },
+  "utterances": [
+    {
+      "utt_id": "test-utt",
+      "buffer_ms": 1000,
+      "final_word_count": 3,
+      "window_count": 4,
+      "max_rollback": 0,
+      "rollback_frequency": 0.0,
+      "time_to_stable_s": 0.0,
+      "convergence_window": 3,
+      "total_churn": 3,
+      "revision_correctness_pct": null,
+      "stable_prefix_ratio_final": 1.0
+    }
+  ]
+}

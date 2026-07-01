@@ -1,0 +1,199 @@
+"""aggregation.py — Pool per-utterance metrics across corpus-level statistics.
+
+Each utterance produces an UtteranceMetrics object.  This module aggregates
+many such objects into corpus-level summary statistics, grouped by buffer size.
+"""
+
+from __future__ import annotations
+from statistics import mean, median, stdev
+from typing import Optional
+from dataclasses import dataclass, field
+
+import numpy as np
+
+from metrics import UtteranceMetrics
+
+
+@dataclass
+class ConfigAggregate:
+    """Aggregated statistics for one buffer-size configuration."""
+    buffer_ms: int
+    num_utterances: int
+
+    # Stable prefix ratio (per-window, then averaged across utterances)
+    spr_mean: float = 0.0
+    spr_p50: float = 0.0
+    spr_p95: float = 0.0
+    spr_p99: float = 0.0
+    spr_at_last_window_mean: float = 0.0  # SPR at the final window of each utterance
+    spr_at_last_window_p95: float = 0.0
+
+    # Word stabilization times (pooled across all words in all utterances)
+    wst_seconds_p50: float = 0.0
+    wst_seconds_p95: float = 0.0
+    wst_seconds_p99: float = 0.0
+
+    # Revision counts (per-word distribution)
+    rev_pct_no_revisions: float = 0.0   # % words with 0 revisions
+    rev_pct_one_revision: float = 0.0   # % words with 1 revision
+    rev_pct_multi_revision: float = 0.0 # % words with 2+ revisions
+
+    # Rollback
+    max_rollback_p50: float = 0.0
+    max_rollback_p95: float = 0.0
+    max_rollback_max: int = 0
+    rollback_frequency_mean: float = 0.0
+    rollback_frequency_p95: float = 0.0
+
+    # Time-to-stable
+    tts_seconds_p50: float = 0.0
+    tts_seconds_p95: float = 0.0
+    tts_seconds_count: int = 0          # how many utterances had a valid TTS
+
+    # Convergence
+    convergence_window_mean: float = 0.0
+
+    # Churn
+    total_churn_mean: float = 0.0
+    total_churn_p95: float = 0.0
+
+    # Revision correctness
+    revision_correctness_mean: float = 0.0
+
+    # Additional
+    windows_per_utterance_mean: float = 0.0
+    words_per_utterance_mean: float = 0.0
+
+
+def aggregate_utterances(
+    all_metrics: list[UtteranceMetrics],
+    buffer_sizes: list[int],
+) -> dict[int, ConfigAggregate]:
+    """Aggregate per-utterance metrics into per-configuration summaries.
+
+    Parameters
+    ----------
+    all_metrics : list of UtteranceMetrics from all runs.
+    buffer_sizes : list of buffer sizes that were tested.
+
+    Returns
+    -------
+    dict mapping buffer_ms → ConfigAggregate.
+    """
+    # Split by buffer size
+    by_config: dict[int, list[UtteranceMetrics]] = {bs: [] for bs in buffer_sizes}
+    for m in all_metrics:
+        bs = m.buffer_ms
+        if bs in by_config:
+            by_config[bs].append(m)
+        else:
+            by_config[bs] = [m]
+
+    results: dict[int, ConfigAggregate] = {}
+    for bs, metrics_list in by_config.items():
+        if not metrics_list:
+            results[bs] = ConfigAggregate(buffer_ms=bs, num_utterances=0)
+            continue
+
+        agg = ConfigAggregate(buffer_ms=bs, num_utterances=len(metrics_list))
+
+        # ── Stable prefix ratio ──
+        # Take the mean SPR across all windows, then median/p95 across utterances
+        all_sprs: list[float] = []
+        last_sprs: list[float] = []
+        for m in metrics_list:
+            if m.stable_prefix_ratios:
+                all_sprs.append(mean(m.stable_prefix_ratios))
+                last_sprs.append(m.stable_prefix_ratios[-1])
+        if all_sprs:
+            agg.spr_mean = round(mean(all_sprs), 4)
+            agg.spr_p50 = round(float(np.median(all_sprs)), 4)
+            agg.spr_p95 = round(float(np.percentile(all_sprs, 95)), 4)
+            agg.spr_p99 = round(float(np.percentile(all_sprs, 99)), 4)
+        if last_sprs:
+            agg.spr_at_last_window_mean = round(mean(last_sprs), 4)
+            agg.spr_at_last_window_p95 = round(float(np.percentile(last_sprs, 95)), 4)
+
+        # ── Word stabilization times (pooled across all words) ──
+        all_wst: list[float] = []
+        for m in metrics_list:
+            for ws in m.word_stabilization_times:
+                if ws is not None:
+                    all_wst.append(ws)
+        if all_wst:
+            agg.wst_seconds_p50 = round(float(np.median(all_wst)), 3)
+            agg.wst_seconds_p95 = round(float(np.percentile(all_wst, 95)), 3)
+            agg.wst_seconds_p99 = round(float(np.percentile(all_wst, 99)), 3)
+
+        # ── Revision counts (per-word distribution) ──
+        all_word_revs: list[int] = []
+        for m in metrics_list:
+            all_word_revs.extend(m.word_revision_counts)
+        if all_word_revs:
+            n = len(all_word_revs)
+            agg.rev_pct_no_revisions = round(sum(1 for r in all_word_revs if r == 0) / n * 100, 1)
+            agg.rev_pct_one_revision = round(sum(1 for r in all_word_revs if r == 1) / n * 100, 1)
+            agg.rev_pct_multi_revision = round(sum(1 for r in all_word_revs if r >= 2) / n * 100, 1)
+
+        # ── Rollback ──
+        all_max_rollbacks = [m.max_rollback for m in metrics_list]
+        if all_max_rollbacks:
+            agg.max_rollback_p50 = round(float(np.median(all_max_rollbacks)), 1)
+            agg.max_rollback_p95 = round(float(np.percentile(all_max_rollbacks, 95)), 1)
+            agg.max_rollback_max = max(all_max_rollbacks)
+
+        all_rf = [m.rollback_frequency for m in metrics_list]
+        if all_rf:
+            agg.rollback_frequency_mean = round(mean(all_rf), 3)
+            agg.rollback_frequency_p95 = round(float(np.percentile(all_rf, 95)), 3)
+
+        # ── Time-to-stable ──
+        valid_tts = [m.time_to_stable_s for m in metrics_list if m.time_to_stable_s is not None]
+        if valid_tts:
+            agg.tts_seconds_p50 = round(float(np.median(valid_tts)), 3)
+            agg.tts_seconds_p95 = round(float(np.percentile(valid_tts, 95)), 3)
+            agg.tts_seconds_count = len(valid_tts)
+
+        # ── Convergence ──
+        conv_windows = [m.convergence_window for m in metrics_list if m.convergence_window is not None]
+        if conv_windows:
+            agg.convergence_window_mean = round(mean(conv_windows), 1)
+
+        # ── Churn ──
+        all_churn = [m.total_churn for m in metrics_list]
+        if all_churn:
+            agg.total_churn_mean = round(mean(all_churn), 1)
+            agg.total_churn_p95 = round(float(np.percentile(all_churn, 95)), 1)
+
+        # ── Correctness ──
+        correct_pcts = [m.revision_correctness_pct for m in metrics_list if m.revision_correctness_pct is not None]
+        if correct_pcts:
+            agg.revision_correctness_mean = round(mean(correct_pcts), 1)
+
+        agg.windows_per_utterance_mean = round(mean(len(m.windows) for m in metrics_list), 1)
+        agg.words_per_utterance_mean = round(mean(len(m.final_words) for m in metrics_list), 1)
+
+        results[bs] = agg
+
+    return results
+
+
+def format_aggregate_table(aggregates: dict[int, ConfigAggregate]) -> str:
+    """Return a human-readable summary table string."""
+    lines = [
+        "\n  Buffer  Utter.  SPR     SPR    SPR    wST    wST    Rev%  Rev%   Rollbk TTS    Conv",
+        "  (ms)   count   mean    P95   final  P50s   P95s   0×    2+×    P95    P95s   win",
+        "  " + "-" * 95,
+    ]
+    for bs in sorted(aggregates):
+        a = aggregates[bs]
+        lines.append(
+            f"  {bs:>5d}  {a.num_utterances:>5d}  "
+            f"{a.spr_mean:>6.3f} {a.spr_p95:>6.3f} {a.spr_at_last_window_p95:>6.3f} "
+            f"{a.wst_seconds_p50:>5.2f} {a.wst_seconds_p95:>5.2f} "
+            f"{a.rev_pct_no_revisions:>5.1f} {a.rev_pct_multi_revision:>5.1f} "
+            f"{a.max_rollback_p95:>5.0f}  "
+            f"{a.tts_seconds_p95:>5.2f} "
+            f"{a.convergence_window_mean:>5.1f}"
+        )
+    return "\n".join(lines)
