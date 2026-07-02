@@ -165,8 +165,8 @@ class WordTracker:
         if wl.first_appearance_window is None:
             wl.first_appearance_window = window_index
 
-        # Record form
-        if not wl.forms_seen or wl.forms_seen[-1] != surface:
+        # Record form (use normalized comparison to avoid "The"/"the" duplicates)
+        if not wl.forms_seen or normalize_word(wl.forms_seen[-1]) != normalize_word(surface):
             wl.forms_seen.append(surface)
 
         if wl.state == WordState.NOT_YET_SEEN:
@@ -211,14 +211,15 @@ class WordTracker:
             # A word is STABLE if it has been correct for at least one full
             # window and hasn't changed.
             if is_correct and wl.first_correct_window is not None and wl.first_correct_window < window_index:
-                wl.state = WordState.STABLE
-                wl.stabilization_window = window_index
-                changes.append({
-                    "type": "stabilised",
-                    "word": wl.word,
-                    "ref_index": a_idx,
-                    "window": window_index,
-                })
+                if wl.state != WordState.STABLE:
+                    wl.state = WordState.STABLE
+                    wl.stabilization_window = window_index
+                    changes.append({
+                        "type": "stabilised",
+                        "word": wl.word,
+                        "ref_index": a_idx,
+                        "window": window_index,
+                    })
 
         # Sanity: STABLE is terminal
         assert wl.state != WordState.STABLE or (

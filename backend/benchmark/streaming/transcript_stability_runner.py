@@ -36,7 +36,6 @@ import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from services.stt_factory import get_stt_provider
 from faster_whisper import WhisperModel
 
 # Internal modules
@@ -226,24 +225,25 @@ def benchmark_utterance(
         al = align_mod.align(final_words, sw.transcript_words)
         aligned_windows.append(metrics_mod.AlignedWindow(window=sw, alignment=al))
 
-    # Compute incremental alignments
-    prev_alignment = None
-    for aw in aligned_windows:
-        if prev_alignment is not None:
-            inc_al = align_mod.align(
-                list(prev_alignment.b_words),
-                aw.window.transcript_words,
-            )
-            aw.incremental_alignment = inc_al
-        prev_alignment = aw
+    # Incremental alignments are computed inside compute_utterance_metrics
+    # (via _incremental_edits) — no redundant work here.
 
-    # ── Track word lifecycles ──
+    # ── Track word lifecycles & compute stable prefix causally ──
     tracker = track_mod.WordTracker(final_words)
+    causal_spl: list[int] = []
+    causal_spr: list[float] = []
     for i, aw in enumerate(aligned_windows):
         tracker.update(aw.alignment, i)
-    lifecycles = tracker.final_states()
+        # Snapshot current word states (not final!) for causal SPR
+        current_states = tracker.final_states()
+        spl, spr = metrics_mod._stable_prefix(aw.alignment, current_states)
+        causal_spl.append(spl)
+        causal_spr.append(spr)
+        aw.stable_prefix_length = spl
+        aw.stable_prefix_ratio = spr
+    lifecycles = tracker.final_states()  # final states (used by WST, TTS, convergence)
 
-    # ── Compute metrics ──
+    # ── Compute metrics (pass pre-computed causal SPR) ──
     metrics = metrics_mod.compute_utterance_metrics(
         utt_id=utt_id,
         buffer_ms=buffer_ms,
@@ -252,7 +252,10 @@ def benchmark_utterance(
         windows=stream_windows,
         lifecycles=lifecycles,
         aligned_windows=aligned_windows,
+        precomputed_stable_prefix_lengths=causal_spl,
+        precomputed_stable_prefix_ratios=causal_spr,
     )
+    metrics.hallucination_count = tracker.hallucination_count
 
     return metrics
 
@@ -325,7 +328,7 @@ def main() -> None:
         print(f"  LibriSpeech: {len(utterances)} utterances sampled from {discovered}")
         audio_source = utterances
     elif args.wav:
-        audio_source = [{"flac_path": args.wav, "utt_id": os.path.basename(args.wav),
+        audio_source = [{"wav_path": args.wav, "utt_id": os.path.basename(args.wav),
                          "transcript_text": None}]
     else:
         print("Need --librispeech <path> or --wav <path> [--transcript <path>]")
@@ -409,9 +412,12 @@ def main() -> None:
         "seed": args.seed,
     }
 
+    # ── Add offline baseline (theoretical ceiling) ──
+    baseline = agg_mod.add_offline_baseline(aggregates, all_metrics)
+
     rpt_mod.write_jsonl(all_metrics)
     rpt_mod.write_report(all_metrics, aggregates, args.buffer_sizes, config_params)
-    rpt_mod.print_summary(all_metrics, aggregates)
+    rpt_mod.print_summary(all_metrics, aggregates, baseline)
 
     # ── Plots ──
     vis_mod.generate_plots(all_metrics, aggregates, args.buffer_sizes, args.seed)

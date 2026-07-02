@@ -85,6 +85,7 @@ def write_report(
             "total_churn": um.total_churn,
             "revision_correctness_pct": round(um.revision_correctness_pct, 1) if um.revision_correctness_pct is not None else None,
             "stable_prefix_ratio_final": round(um.stable_prefix_ratios[-1], 4) if um.stable_prefix_ratios else 0,
+            "hallucination_count": um.hallucination_count,
         }
         utterance_summaries.append(summary)
 
@@ -107,6 +108,7 @@ def write_report(
 def print_summary(
     all_metrics: list[UtteranceMetrics],
     aggregates: dict[int, ConfigAggregate],
+    baseline: ConfigAggregate | None = None,
 ) -> None:
     """Print human-readable summary to stdout."""
     print(f"\n{'=' * 100}")
@@ -114,7 +116,15 @@ def print_summary(
     print(f"{'=' * 100}")
     print(f"  Utterances evaluated: {len(all_metrics)}")
 
-    print(format_aggregate_table(aggregates))
+    if baseline is not None:
+        print(f"\n  Offline baseline (full-audio decode):")
+        print(f"    SPR=1.000, 0-rev=100%, TTS=0.0s (theoretical ceiling)")
+        aggregates_display = dict(aggregates)
+        aggregates_display[0] = baseline
+    else:
+        aggregates_display = aggregates
+
+    print(format_aggregate_table(aggregates_display))
 
     # Word revision distribution
     print(f"\n  Word revision distribution (across all utterances):")

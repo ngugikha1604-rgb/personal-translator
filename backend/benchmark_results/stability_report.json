@@ -5,20 +5,22 @@
     1000
   ],
   "num_utterances": 1,
-  "configuration": {},
+  "configuration": {
+    "test": true
+  },
   "aggregates": {
     "1000": {
       "buffer_ms": 1000,
       "num_utterances": 1,
-      "spr_mean": 1.0,
-      "spr_p50": 1.0,
-      "spr_p95": 1.0,
-      "spr_p99": 1.0,
+      "spr_mean": 0.5,
+      "spr_p50": 0.5,
+      "spr_p95": 0.5,
+      "spr_p99": 0.5,
       "spr_at_last_window_mean": 1.0,
       "spr_at_last_window_p95": 1.0,
-      "wst_seconds_p50": 2.0,
-      "wst_seconds_p95": 2.0,
-      "wst_seconds_p99": 2.0,
+      "wst_seconds_p50": 1.0,
+      "wst_seconds_p95": 1.0,
+      "wst_seconds_p99": 1.0,
       "rev_pct_no_revisions": 100.0,
       "rev_pct_one_revision": 0.0,
       "rev_pct_multi_revision": 0.0,
@@ -40,7 +42,7 @@
   },
   "utterances": [
     {
-      "utt_id": "test-utt",
+      "utt_id": "t1",
       "buffer_ms": 1000,
       "final_word_count": 3,
       "window_count": 4,
@@ -50,7 +52,8 @@
       "convergence_window": 3,
       "total_churn": 3,
       "revision_correctness_pct": null,
-      "stable_prefix_ratio_final": 1.0
+      "stable_prefix_ratio_final": 1.0,
+      "hallucination_count": 0
     }
   ]
 }

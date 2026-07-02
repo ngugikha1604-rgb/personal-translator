@@ -97,6 +97,9 @@ class UtteranceMetrics:
     # Transcript churn: total edit distance accumulated across transitions
     total_churn: int = 0
 
+    # Hallucinated words (present in streaming but absent from final transcript)
+    hallucination_count: int = 0
+
 
 # ── Metric computation ──
 
@@ -189,6 +192,8 @@ def compute_utterance_metrics(
     windows: list[StreamingWindow],
     lifecycles: list[WordLifecycle],
     aligned_windows: list[AlignedWindow],
+    precomputed_stable_prefix_lengths: list[int] | None = None,
+    precomputed_stable_prefix_ratios: list[float] | None = None,
 ) -> UtteranceMetrics:
     """Compute all stability metrics for one utterance.
 
@@ -202,21 +207,29 @@ def compute_utterance_metrics(
     lifecycles : word lifecycles (from WordTracker.final_states()).
     aligned_windows : each window aligned to the final transcript (from
                       alignment module), with incremental alignments set.
+    precomputed_stable_prefix_lengths : causal SPL per window (computed during
+                       tracking loop with snapshot of current states). If None,
+                       computed here using final lifecycles (non-causal / buggy).
+    precomputed_stable_prefix_ratios : same, for ratio.
 
     Returns fully populated UtteranceMetrics.
     """
-    # Reconstruct the final_length from lifecycles
     final_length = len(final_words)
 
-    # 1. Stable prefix (per window)
-    stable_prefix_lengths: list[int] = []
-    stable_prefix_ratios: list[float] = []
-    for aw in aligned_windows:
-        spl, spr = _stable_prefix(aw.alignment, lifecycles)
-        stable_prefix_lengths.append(spl)
-        stable_prefix_ratios.append(spr)
-        aw.stable_prefix_length = spl
-        aw.stable_prefix_ratio = spr
+    # 1. Stable prefix (per window) — use pre-computed causal values
+    if precomputed_stable_prefix_lengths is not None:
+        stable_prefix_lengths = list(precomputed_stable_prefix_lengths)
+        stable_prefix_ratios = list(precomputed_stable_prefix_ratios)
+        # aw.* fields already set in runner
+    else:
+        stable_prefix_lengths: list[int] = []
+        stable_prefix_ratios: list[float] = []
+        for aw in aligned_windows:
+            spl, spr = _stable_prefix(aw.alignment, lifecycles)
+            stable_prefix_lengths.append(spl)
+            stable_prefix_ratios.append(spr)
+            aw.stable_prefix_length = spl
+            aw.stable_prefix_ratio = spr
 
     # 2. Incremental edits (per window transition)
     max_rollback = 0
@@ -248,29 +261,39 @@ def compute_utterance_metrics(
 
     rollback_frequency = rollback_window_count / len(aligned_windows) if aligned_windows else 0.0
 
-    # 3. Word stabilization times
+    # 3. Word stabilization times (duration from first appearance to stabilization)
     word_stab_times: list[float | None] = []
     word_rev_counts: list[int] = []
     for wl in lifecycles:
         word_rev_counts.append(wl.revision_count)
         if wl.stabilization_window is not None:
-            # stabilization time = end_time of the stabilization window
             stab_idx = wl.stabilization_window
+            first_idx = wl.first_appearance_window
             if stab_idx < len(windows):
                 stab_time = windows[stab_idx].end_time
             else:
                 stab_time = audio_duration_s
-            word_stab_times.append(stab_time)
+            if first_idx is not None and first_idx < len(windows):
+                first_time = windows[first_idx].start_time
+            else:
+                first_time = 0.0
+            # WST = duration from first appearance to stabilization
+            word_stab_times.append(stab_time - first_time)
         else:
             word_stab_times.append(None)
 
-    # 4. Time-to-stable
-    last_stab = max(
-        (ws for ws in word_stab_times if ws is not None),
-        default=None,
-    )
-    if last_stab is not None:
-        time_to_stable_s = last_stab - audio_duration_s
+    # 4. Time-to-stable (absolute wall-clock from audio end until last word stabilizes)
+    # Store absolute stabilization times separately from WST durations
+    abs_stab_times: list[float] = []
+    for wl in lifecycles:
+        if wl.stabilization_window is not None:
+            stab_idx = wl.stabilization_window
+            abs_time = windows[stab_idx].end_time if stab_idx < len(windows) else audio_duration_s
+            abs_stab_times.append(abs_time)
+
+    if abs_stab_times:
+        last_stab = max(abs_stab_times)
+        time_to_stable_s = max(0.0, last_stab - audio_duration_s)
     else:
         time_to_stable_s = None
 

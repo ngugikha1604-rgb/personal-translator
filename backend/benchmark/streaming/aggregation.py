@@ -65,6 +65,54 @@ class ConfigAggregate:
     words_per_utterance_mean: float = 0.0
 
 
+def _bucket_name(word_count: int) -> str:
+    if word_count < 10:
+        return "short"
+    if word_count <= 30:
+        return "medium"
+    return "long"
+
+
+def _bucket_utterances(
+    metrics_list: list[UtteranceMetrics],
+) -> dict[str, list[UtteranceMetrics]]:
+    """Split utterances into length buckets: short, medium, long."""
+    buckets: dict[str, list[UtteranceMetrics]] = {
+        "short": [], "medium": [], "long": [],
+    }
+    for m in metrics_list:
+        bucket = _bucket_name(len(m.final_words))
+        buckets[bucket].append(m)
+    return buckets
+
+
+def aggregate_by_length(
+    all_metrics: list[UtteranceMetrics],
+    buffer_sizes: list[int],
+) -> dict[int, dict[str, ConfigAggregate]]:
+    """Aggregate per-utterance metrics, then group by utterance length.
+
+    Returns dict: buffer_ms → {bucket_name → ConfigAggregate}
+    """
+    by_config: dict[int, list[UtteranceMetrics]] = {bs: [] for bs in buffer_sizes}
+    for m in all_metrics:
+        bs = m.buffer_ms
+        if bs in by_config:
+            by_config[bs].append(m)
+
+    result: dict[int, dict[str, ConfigAggregate]] = {}
+    for bs, metrics_list in by_config.items():
+        buckets = _bucket_utterances(metrics_list)
+        result[bs] = {}
+        for name, bucket_list in buckets.items():
+            if not bucket_list:
+                continue
+            # Run the standard aggregation on this bucket's subset
+            subset_agg = aggregate_utterances(bucket_list, [bs])
+            result[bs][name] = subset_agg.get(bs, ConfigAggregate(buffer_ms=bs, num_utterances=0))
+    return result
+
+
 def aggregate_utterances(
     all_metrics: list[UtteranceMetrics],
     buffer_sizes: list[int],
@@ -176,6 +224,51 @@ def aggregate_utterances(
         results[bs] = agg
 
     return results
+
+
+def add_offline_baseline(
+    aggregates: dict[int, ConfigAggregate],
+    all_metrics: list[UtteranceMetrics],
+) -> ConfigAggregate:
+    """Return an 'offline' baseline ConfigAggregate for comparison.
+
+    The offline decode has perfect stability (SPR=1.0, 0 revisions, 0 TTS).
+    This is the ceiling that streaming configurations are compared against.
+    """
+    num_utt = len(set(m.utt_id for m in all_metrics))
+    total_words = sum(len(m.final_words) for m in all_metrics)
+
+    baseline = ConfigAggregate(
+        buffer_ms=0,
+        num_utterances=num_utt,
+        spr_mean=1.0,
+        spr_p50=1.0,
+        spr_p95=1.0,
+        spr_p99=1.0,
+        spr_at_last_window_mean=1.0,
+        spr_at_last_window_p95=1.0,
+        wst_seconds_p50=0.0,
+        wst_seconds_p95=0.0,
+        wst_seconds_p99=0.0,
+        rev_pct_no_revisions=100.0,
+        rev_pct_one_revision=0.0,
+        rev_pct_multi_revision=0.0,
+        max_rollback_p50=0.0,
+        max_rollback_p95=0.0,
+        max_rollback_max=0,
+        rollback_frequency_mean=0.0,
+        rollback_frequency_p95=0.0,
+        tts_seconds_p50=0.0,
+        tts_seconds_p95=0.0,
+        tts_seconds_count=num_utt,
+        convergence_window_mean=0.0,
+        total_churn_mean=0.0,
+        total_churn_p95=0.0,
+        revision_correctness_mean=100.0,
+        windows_per_utterance_mean=1.0,
+        words_per_utterance_mean=round(total_words / num_utt, 1) if num_utt else 0,
+    )
+    return baseline
 
 
 def format_aggregate_table(aggregates: dict[int, ConfigAggregate]) -> str:
