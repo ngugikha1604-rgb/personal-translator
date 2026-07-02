@@ -1,7 +1,8 @@
-"""aggregation.py — Pool per-utterance metrics across corpus-level statistics.
+"""aggregation.py — Pool per-utterance metrics into (buffer_size, strategy) summaries.
 
 Each utterance produces an UtteranceMetrics object.  This module aggregates
-many such objects into corpus-level summary statistics, grouped by buffer size.
+many such objects into corpus-level summary statistics, grouped by BOTH
+buffer size AND merge strategy.
 """
 
 from __future__ import annotations
@@ -16,27 +17,28 @@ from metrics import UtteranceMetrics
 
 @dataclass
 class ConfigAggregate:
-    """Aggregated statistics for one buffer-size configuration."""
+    """Aggregated statistics for one (buffer_size, merge_strategy) configuration."""
     buffer_ms: int
-    num_utterances: int
+    strategy: str = ""
+    num_utterances: int = 0
 
-    # Stable prefix ratio (per-window, then averaged across utterances)
+    # Stable prefix ratio
     spr_mean: float = 0.0
     spr_p50: float = 0.0
     spr_p95: float = 0.0
     spr_p99: float = 0.0
-    spr_at_last_window_mean: float = 0.0  # SPR at the final window of each utterance
+    spr_at_last_window_mean: float = 0.0
     spr_at_last_window_p95: float = 0.0
 
-    # Word stabilization times (pooled across all words in all utterances)
+    # Word stabilization times (pooled across all words)
     wst_seconds_p50: float = 0.0
     wst_seconds_p95: float = 0.0
     wst_seconds_p99: float = 0.0
 
     # Revision counts (per-word distribution)
-    rev_pct_no_revisions: float = 0.0   # % words with 0 revisions
-    rev_pct_one_revision: float = 0.0   # % words with 1 revision
-    rev_pct_multi_revision: float = 0.0 # % words with 2+ revisions
+    rev_pct_no_revisions: float = 0.0
+    rev_pct_one_revision: float = 0.0
+    rev_pct_multi_revision: float = 0.0
 
     # Rollback
     max_rollback_p50: float = 0.0
@@ -48,7 +50,7 @@ class ConfigAggregate:
     # Time-to-stable
     tts_seconds_p50: float = 0.0
     tts_seconds_p95: float = 0.0
-    tts_seconds_count: int = 0          # how many utterances had a valid TTS
+    tts_seconds_count: int = 0
 
     # Convergence
     convergence_window_mean: float = 0.0
@@ -59,6 +61,11 @@ class ConfigAggregate:
 
     # Revision correctness
     revision_correctness_mean: float = 0.0
+
+    # Commit latency (raw → merged appearance)
+    commit_latency_seconds_p50: float = 0.0
+    commit_latency_seconds_p95: float = 0.0
+    commit_latency_count: int = 0
 
     # Additional
     windows_per_utterance_mean: float = 0.0
@@ -76,7 +83,6 @@ def _bucket_name(word_count: int) -> str:
 def _bucket_utterances(
     metrics_list: list[UtteranceMetrics],
 ) -> dict[str, list[UtteranceMetrics]]:
-    """Split utterances into length buckets: short, medium, long."""
     buckets: dict[str, list[UtteranceMetrics]] = {
         "short": [], "medium": [], "long": [],
     }
@@ -89,35 +95,33 @@ def _bucket_utterances(
 def aggregate_by_length(
     all_metrics: list[UtteranceMetrics],
     buffer_sizes: list[int],
-) -> dict[int, dict[str, ConfigAggregate]]:
+) -> dict[tuple[int, str], dict[str, ConfigAggregate]]:
     """Aggregate per-utterance metrics, then group by utterance length.
 
-    Returns dict: buffer_ms → {bucket_name → ConfigAggregate}
+    Returns dict: (buffer_ms, strategy) → {bucket_name → ConfigAggregate}
     """
-    by_config: dict[int, list[UtteranceMetrics]] = {bs: [] for bs in buffer_sizes}
+    by_key: dict[tuple[int, str], list[UtteranceMetrics]] = {}
     for m in all_metrics:
-        bs = m.buffer_ms
-        if bs in by_config:
-            by_config[bs].append(m)
+        key = (m.buffer_ms, m.strategy)
+        by_key.setdefault(key, []).append(m)
 
-    result: dict[int, dict[str, ConfigAggregate]] = {}
-    for bs, metrics_list in by_config.items():
+    result: dict[tuple[int, str], dict[str, ConfigAggregate]] = {}
+    for key, metrics_list in by_key.items():
         buckets = _bucket_utterances(metrics_list)
-        result[bs] = {}
+        result[key] = {}
         for name, bucket_list in buckets.items():
             if not bucket_list:
                 continue
-            # Run the standard aggregation on this bucket's subset
-            subset_agg = aggregate_utterances(bucket_list, [bs])
-            result[bs][name] = subset_agg.get(bs, ConfigAggregate(buffer_ms=bs, num_utterances=0))
+            subset_agg = aggregate_utterances(bucket_list, [key[0]])
+            result[key][name] = subset_agg.get(key, ConfigAggregate(buffer_ms=key[0], strategy=key[1]))
     return result
 
 
 def aggregate_utterances(
     all_metrics: list[UtteranceMetrics],
     buffer_sizes: list[int],
-) -> dict[int, ConfigAggregate]:
-    """Aggregate per-utterance metrics into per-configuration summaries.
+) -> dict[tuple[int, str], ConfigAggregate]:
+    """Aggregate per-utterance metrics into per-(buffer_size, strategy) summaries.
 
     Parameters
     ----------
@@ -126,27 +130,22 @@ def aggregate_utterances(
 
     Returns
     -------
-    dict mapping buffer_ms → ConfigAggregate.
+    dict mapping (buffer_ms, strategy) → ConfigAggregate.
     """
-    # Split by buffer size
-    by_config: dict[int, list[UtteranceMetrics]] = {bs: [] for bs in buffer_sizes}
+    by_config: dict[tuple[int, str], list[UtteranceMetrics]] = {}
     for m in all_metrics:
-        bs = m.buffer_ms
-        if bs in by_config:
-            by_config[bs].append(m)
-        else:
-            by_config[bs] = [m]
+        key = (m.buffer_ms, m.strategy)
+        by_config.setdefault(key, []).append(m)
 
-    results: dict[int, ConfigAggregate] = {}
-    for bs, metrics_list in by_config.items():
+    results: dict[tuple[int, str], ConfigAggregate] = {}
+    for (bs, strat), metrics_list in by_config.items():
         if not metrics_list:
-            results[bs] = ConfigAggregate(buffer_ms=bs, num_utterances=0)
+            results[(bs, strat)] = ConfigAggregate(buffer_ms=bs, strategy=strat, num_utterances=0)
             continue
 
-        agg = ConfigAggregate(buffer_ms=bs, num_utterances=len(metrics_list))
+        agg = ConfigAggregate(buffer_ms=bs, strategy=strat, num_utterances=len(metrics_list))
 
         # ── Stable prefix ratio ──
-        # Take the mean SPR across all windows, then median/p95 across utterances
         all_sprs: list[float] = []
         last_sprs: list[float] = []
         for m in metrics_list:
@@ -162,7 +161,7 @@ def aggregate_utterances(
             agg.spr_at_last_window_mean = round(mean(last_sprs), 4)
             agg.spr_at_last_window_p95 = round(float(np.percentile(last_sprs, 95)), 4)
 
-        # ── Word stabilization times (pooled across all words) ──
+        # ── Word stabilization times ──
         all_wst: list[float] = []
         for m in metrics_list:
             for ws in m.word_stabilization_times:
@@ -173,7 +172,7 @@ def aggregate_utterances(
             agg.wst_seconds_p95 = round(float(np.percentile(all_wst, 95)), 3)
             agg.wst_seconds_p99 = round(float(np.percentile(all_wst, 99)), 3)
 
-        # ── Revision counts (per-word distribution) ──
+        # ── Revision counts ──
         all_word_revs: list[int] = []
         for m in metrics_list:
             all_word_revs.extend(m.word_revision_counts)
@@ -218,23 +217,30 @@ def aggregate_utterances(
         if correct_pcts:
             agg.revision_correctness_mean = round(mean(correct_pcts), 1)
 
+        # ── Commit latency ──
+        all_commit_lat: list[float] = []
+        for m in metrics_list:
+            for cl in m.commit_latencies:
+                if cl is not None:
+                    all_commit_lat.append(cl)
+        if all_commit_lat:
+            agg.commit_latency_seconds_p50 = round(float(np.median(all_commit_lat)), 3)
+            agg.commit_latency_seconds_p95 = round(float(np.percentile(all_commit_lat, 95)), 3)
+            agg.commit_latency_count = len(all_commit_lat)
+
         agg.windows_per_utterance_mean = round(mean(len(m.windows) for m in metrics_list), 1)
         agg.words_per_utterance_mean = round(mean(len(m.final_words) for m in metrics_list), 1)
 
-        results[bs] = agg
+        results[(bs, strat)] = agg
 
     return results
 
 
 def add_offline_baseline(
-    aggregates: dict[int, ConfigAggregate],
+    aggregates: dict[tuple[int, str], ConfigAggregate],
     all_metrics: list[UtteranceMetrics],
 ) -> ConfigAggregate:
-    """Return an 'offline' baseline ConfigAggregate for comparison.
-
-    The offline decode has perfect stability (SPR=1.0, 0 revisions, 0 TTS).
-    This is the ceiling that streaming configurations are compared against.
-    """
+    """Return an 'offline' baseline ConfigAggregate for comparison."""
     num_utt = len(set(m.utt_id for m in all_metrics))
     total_words = sum(len(m.final_words) for m in all_metrics)
 
@@ -265,28 +271,32 @@ def add_offline_baseline(
         total_churn_mean=0.0,
         total_churn_p95=0.0,
         revision_correctness_mean=100.0,
+        commit_latency_seconds_p50=0.0,
+        commit_latency_seconds_p95=0.0,
+        commit_latency_count=0,
         windows_per_utterance_mean=1.0,
         words_per_utterance_mean=round(total_words / num_utt, 1) if num_utt else 0,
     )
     return baseline
 
 
-def format_aggregate_table(aggregates: dict[int, ConfigAggregate]) -> str:
+def format_aggregate_table(aggregates: dict[tuple[int, str], ConfigAggregate]) -> str:
     """Return a human-readable summary table string."""
     lines = [
-        "\n  Buffer  Utter.  SPR     SPR    SPR    wST    wST    Rev%  Rev%   Rollbk TTS    Conv",
-        "  (ms)   count   mean    P95   final  P50s   P95s   0×    2+×    P95    P95s   win",
-        "  " + "-" * 95,
+        "\n  Buffer  Strategy               Utter.  SPR     SPR    SPR    wST    wST    Rev%  Rev%   Rollbk TTS    Conv   Commit",
+        "  (ms)                        count   mean    P95   final  P50s   P95s   0×    2+×    P95    P95s   win    LatP95",
+        "  " + "-" * 120,
     ]
-    for bs in sorted(aggregates):
-        a = aggregates[bs]
+    for (bs, strat) in sorted(aggregates):
+        a = aggregates[(bs, strat)]
         lines.append(
-            f"  {bs:>5d}  {a.num_utterances:>5d}  "
+            f"  {bs:>5d}  {strat:<25s} {a.num_utterances:>5d}  "
             f"{a.spr_mean:>6.3f} {a.spr_p95:>6.3f} {a.spr_at_last_window_p95:>6.3f} "
             f"{a.wst_seconds_p50:>5.2f} {a.wst_seconds_p95:>5.2f} "
             f"{a.rev_pct_no_revisions:>5.1f} {a.rev_pct_multi_revision:>5.1f} "
             f"{a.max_rollback_p95:>5.0f}  "
             f"{a.tts_seconds_p95:>5.2f} "
-            f"{a.convergence_window_mean:>5.1f}"
+            f"{a.convergence_window_mean:>5.1f} "
+            f"{a.commit_latency_seconds_p95:>7.3f}"
         )
     return "\n".join(lines)

@@ -12,6 +12,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
+from alignment import normalize_word
+
 
 # ── MergeStrategy interface ──
 
@@ -23,6 +25,10 @@ class MergeStrategy(ABC):
     and the current merged state.
     """
     name: str
+
+    def reset(self) -> None:
+        """Reset any internal state (e.g., history buffer). Override if needed."""
+        pass
 
     @abstractmethod
     def merge(
@@ -79,10 +85,17 @@ class SlidingReplace(MergeStrategy):
         raw_words: list[str],
         current_merged: list[str],
     ) -> list[str]:
+        # ── Raw always overwrites the overlapping prefix (that's the
+        #    "replace" semantic).  Keep current_merged's tail only when
+        #    it extends further than raw_words currently does. ──
         overlap = min(len(raw_words), len(current_merged))
         result = list(raw_words[:overlap])
-        if len(raw_words) > overlap:
-            result.extend(raw_words[overlap:])
+        if len(raw_words) > len(current_merged):
+            # Raw window has NEW words beyond what's currently merged
+            result.extend(raw_words[len(current_merged):])
+        elif len(current_merged) > len(raw_words):
+            # current_merged has words beyond what raw covers — keep them
+            result.extend(current_merged[len(raw_words):])
         return result
 
 
@@ -121,17 +134,22 @@ class LocalAgreement(MergeStrategy):
         if len(self._history) > self.n:
             self._history.pop(0)
 
-        # Not enough history yet — mimic naive append (baseline)
+        # Not enough history yet — return empty output (no words committed
+        # until N consecutive windows agree).  This is the CORRECT behavior:
+        # local agreement delays commits until N confirmations, so the first
+        # N-1 windows produce nothing.  Words WILL appear in the merged
+        # transcript only when the agreement window is full.
         if len(self._history) < self.n:
-            return NaiveAppend().merge(raw_words, current_merged)
+            return []
 
-        # Find N-way agreement prefix
+        # Find N-way agreement prefix (normalized comparison)
         min_len = min(len(w) for w in self._history)
         agreed: list[str] = []
         for pos in range(min_len):
             forms = [h[pos] for h in self._history]
-            if len(set(forms)) == 1:
-                agreed.append(forms[0])
+            normalized = [normalize_word(f) for f in forms]
+            if len(set(normalized)) == 1:
+                agreed.append(forms[-1])  # keep most recent surface form
             else:
                 break
 
@@ -164,3 +182,51 @@ def strategy_display_name(name: str) -> str:
         "local_agreement_2": "Local Agr. (N=2)",
         "local_agreement_3": "Local Agr. (N=3)",
     }.get(name, name)
+
+
+if __name__ == "__main__":
+    # Standalone sanity check
+    print("=== SlidingReplace sanity check ===")
+    from alignment import normalize_word
+
+    def show(s):
+        print(s)
+
+    sr = SlidingReplace()
+    sr.reset()
+
+    # Case 1: raw shorter than merged — merged tail should be kept
+    current = ["a", "b", "c", "d"]
+    raw = ["x", "y"]
+    out = sr.merge(raw, current)
+    show(f"  Input:  merged={current}, raw={raw}")
+    show(f"  Output: {out}")
+    show(f"  Expect: ['x', 'y', 'c', 'd']  (prefix replaced, tail kept)")
+    show(f"  PASS:   {out == ['x', 'y', 'c', 'd']}")
+
+    # Case 2: raw longer than merged — new words appended
+    current = ["a", "b"]
+    raw = ["x", "y", "z"]
+    out = sr.merge(raw, current)
+    show(f"  Input:  merged={current}, raw={raw}")
+    show(f"  Output: {out}")
+    show(f"  Expect: ['x', 'y', 'z']  (prefix replaced, new words appended)")
+    show(f"  PASS:   {out == ['x', 'y', 'z']}")
+
+    # Case 3: equal length, divergent content — raw wins
+    current = ["a", "b", "c"]
+    raw = ["x", "y", "z"]
+    out = sr.merge(raw, current)
+    show(f"  Input:  merged={current}, raw={raw}")
+    show(f"  Output: {out}")
+    show(f"  Expect: ['x', 'y', 'z']  (all replaced by raw)")
+    show(f"  PASS:   {out == ['x', 'y', 'z']}")
+
+    # Case 4: raw empty — keep all of merged
+    current = ["a", "b"]
+    raw = []
+    out = sr.merge(raw, current)
+    show(f"  Input:  merged={current}, raw={raw}")
+    show(f"  Output: {out}")
+    show(f"  Expect: ['a', 'b']  (keep all merged when raw silent)")
+    show(f"  PASS:   {out == ['a', 'b']}")

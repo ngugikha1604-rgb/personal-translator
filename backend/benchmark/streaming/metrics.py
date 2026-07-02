@@ -301,6 +301,15 @@ def compute_utterance_metrics(
 
     if abs_stab_times:
         last_stab = max(abs_stab_times)
+        # NOTE: time_to_stable_s is mathematically guaranteed to be 0 (or very
+        # close to it) under the current accumulating-window generation because
+        # all window end times are capped at audio_duration_s.  Since the
+        # latest stabilization window cannot extend beyond the full audio
+        # duration, last_stab - audio_duration_s ≤ 0, and the max(0, ...)
+        # below clamps it to 0.  This is a metric-definition limitation of
+        # audio-bounded windows, not an implementation error.  Measuring TTS
+        # as positive would require windows to extend beyond audio duration,
+        # which is a deliberate redesign choice — not a bug to patch silently.
         time_to_stable_s = max(0.0, last_stab - audio_duration_s)
     else:
         time_to_stable_s = None
@@ -339,7 +348,7 @@ def compute_utterance_metrics(
             raw_first = wl.first_raw_appearance_window
             merged_first = wl.first_appearance_window
             if raw_first is not None and merged_first is not None:
-                raw_time = raw_windows[raw_first].start_time if raw_first < len(raw_windows) else 0.0
+                raw_time = raw_windows[raw_first].end_time if raw_first < len(raw_windows) else 0.0
                 merged_time = windows[merged_first].end_time if merged_first < len(windows) else 0.0
                 commit_lat.append(max(0.0, merged_time - raw_time))
             else:

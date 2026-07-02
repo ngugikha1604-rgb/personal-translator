@@ -119,10 +119,10 @@ def _wav_bytes_to_float32(wav_bytes: bytes) -> np.ndarray:
     audio = np.frombuffer(frames, dtype=np.int16).astype(np.float32)
     return audio / 32768.0
 
-
-def _simulate_streaming_windows(
+def _simulate_rolling_windows(
     audio_duration_s: float, buffer_s: float, interval_s: float
 ) -> list[tuple[float, float]]:
+    """Disjoint sliding window (old semantics — fixed-size, no accumulation)."""
     windows = []
     t = 0.0
     while t < audio_duration_s:
@@ -130,6 +130,29 @@ def _simulate_streaming_windows(
         end = min(end, audio_duration_s)
         windows.append((t, end))
         t += interval_s
+    return windows
+
+
+def _simulate_growing_windows(
+    audio_duration_s: float, interval_s: float, max_context_s: float
+) -> list[tuple[float, float]]:
+    """Accumulating buffer with optional maximum context cap.
+
+    Each window starts at 0 (utterance beginning) and grows until the buffer
+    reaches max_context_s, after which the start creeps forward to maintain
+    at most max_context_s seconds of audio (bounded memory).
+
+    This is the correct window model for evaluating merge/commit strategies
+    (NaiveAppend, SlidingReplace, LocalAgreement), which all assume later
+    windows extend earlier ones rather than replacing them with disjoint audio.
+    """
+    windows = []
+    end = interval_s
+    while end - interval_s < audio_duration_s:
+        capped_end = min(end, audio_duration_s)
+        start = max(0.0, capped_end - max_context_s)
+        windows.append((start, capped_end))
+        end += interval_s
     return windows
 
 
@@ -146,12 +169,19 @@ def benchmark_utterance(
 ) -> list[metrics_mod.UtteranceMetrics]:
     """Decode raw windows once. Then apply ALL merge strategies.
     Returns one UtteranceMetrics per strategy.
+
+    NOTE: `buffer_ms` is now interpreted as the MAXIMUM AUDIO CONTEXT
+    RETAINED (accumulating from utterance start until this cap is reached,
+    after which it behaves as a rolling window capped at this size).  This
+    is the accumulating-buffer model — the correct input for merge/commit
+    strategies — NOT the fixed-size disjoint sliding window used by other
+    benchmarks.
     """
     duration_s = len(audio_f32) / SAMPLE_RATE
     buffer_s = buffer_ms / 1000.0
     interval_s = interval_ms / 1000.0
 
-    windows = _simulate_streaming_windows(duration_s, buffer_s, interval_s)
+    windows = _simulate_growing_windows(duration_s, interval_s, buffer_s)
     if not windows:
         return []
 
@@ -388,7 +418,13 @@ def main() -> None:
     rpt_mod.write_jsonl(all_metrics)
     rpt_mod.write_report(all_metrics, aggregates, args.buffer_sizes, config_params)
     rpt_mod.print_summary(all_metrics, aggregates, baseline)
-    vis_mod.generate_plots(all_metrics, aggregates, args.buffer_sizes, args.seed)
+    # Visualization expects dict[int, ConfigAggregate]; pass only "raw" strategy results
+    legacy_aggs: dict[int, agg_mod.ConfigAggregate] = {}
+    for bs in args.buffer_sizes:
+        key = (bs, "raw")
+        if key in aggregates:
+            legacy_aggs[bs] = aggregates[key]
+    vis_mod.generate_plots(all_metrics, legacy_aggs, args.buffer_sizes, args.seed)
 
 
 def _flac_to_float32(path: str) -> np.ndarray:
