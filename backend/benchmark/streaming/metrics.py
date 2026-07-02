@@ -100,6 +100,12 @@ class UtteranceMetrics:
     # Hallucinated words (present in streaming but absent from final transcript)
     hallucination_count: int = 0
 
+    # Merging strategy used (or "raw" for baseline)
+    strategy: str = "raw"
+
+    # Commit latency (per word): delay between first RAW appearance and first MERGED appearance
+    commit_latencies: list[float | None] = field(default_factory=list)
+
 
 # ── Metric computation ──
 
@@ -194,6 +200,8 @@ def compute_utterance_metrics(
     aligned_windows: list[AlignedWindow],
     precomputed_stable_prefix_lengths: list[int] | None = None,
     precomputed_stable_prefix_ratios: list[float] | None = None,
+    raw_windows: list[StreamingWindow] | None = None,
+    strategy_name: str = "raw",
 ) -> UtteranceMetrics:
     """Compute all stability metrics for one utterance.
 
@@ -324,6 +332,19 @@ def compute_utterance_metrics(
                 correct_revisions += 1
     revision_correctness = (correct_revisions / total_revisions * 100.0) if total_revisions > 0 else None
 
+    # 7. Commit latency (merged vs raw) — only if raw_windows provided
+    commit_lat: list[float | None] = []
+    if raw_windows is not None:
+        for wl in lifecycles:
+            raw_first = wl.first_raw_appearance_window
+            merged_first = wl.first_appearance_window
+            if raw_first is not None and merged_first is not None:
+                raw_time = raw_windows[raw_first].start_time if raw_first < len(raw_windows) else 0.0
+                merged_time = windows[merged_first].end_time if merged_first < len(windows) else 0.0
+                commit_lat.append(max(0.0, merged_time - raw_time))
+            else:
+                commit_lat.append(None)
+
     metrics = UtteranceMetrics(
         utt_id=utt_id,
         buffer_ms=buffer_ms,
@@ -331,6 +352,7 @@ def compute_utterance_metrics(
         final_words=final_words,
         windows=aligned_windows,
         word_lifecycles=lifecycles,
+        strategy=strategy_name,
         stable_prefix_lengths=stable_prefix_lengths,
         stable_prefix_ratios=stable_prefix_ratios,
         word_stabilization_times=word_stab_times,
@@ -341,5 +363,6 @@ def compute_utterance_metrics(
         time_to_stable_s=time_to_stable_s,
         convergence_window=convergence_window,
         total_churn=total_churn,
+        commit_latencies=commit_lat,
     )
     return metrics

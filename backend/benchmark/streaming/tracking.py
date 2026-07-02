@@ -37,6 +37,7 @@ class WordLifecycle:
     word: str
     ref_index: int
     first_appearance_window: int | None = None
+    first_raw_appearance_window: int | None = None  # first raw decode where this word appeared
     first_correct_window: int | None = None
     stabilization_window: int | None = None
     last_revision_window: int | None = None
